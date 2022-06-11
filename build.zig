@@ -37,7 +37,9 @@ const capps = .{
     "zombie",
 };
 
-const zapps = .{};
+const zapps = .{
+    "sleep",
+};
 
 const kfiles = .{
     "entry.S",
@@ -133,7 +135,7 @@ pub fn build(b: *Builder) void {
 
     // build fs.img
     const fs = mkfs.run();
-    fs.print = true;
+    //fs.print = true;
 
     fs.addArg(b.pathJoin(&.{ b.install_prefix, "fs.img" }));
     fs.addArg("README");
@@ -165,8 +167,7 @@ pub fn build(b: *Builder) void {
         // zig fmt: on
     });
 
-    qemu.step.dependOn(&kernel.step);
-    qemu.step.dependOn(&fs.step);
+    qemu.step.dependOn(b.getInstallStep());
     qemu_tls.dependOn(&qemu.step);
 }
 
