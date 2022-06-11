@@ -4,6 +4,7 @@
 #include <string.h>
 #include <fcntl.h>
 #include <assert.h>
+#include <libgen.h>
 
 #define stat xv6_stat  // avoid clash with host struct stat
 #include "kernel/types.h"
@@ -130,10 +131,7 @@ main(int argc, char *argv[])
   for(i = 2; i < argc; i++){
     // get rid of "user/"
     char *shortname;
-    if(strncmp(argv[i], "user/", 5) == 0)
-      shortname = argv[i] + 5;
-    else
-      shortname = argv[i];
+    shortname = basename(argv[i]);
     
     assert(index(shortname, '/') == 0);
 
