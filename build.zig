@@ -35,6 +35,9 @@ const capps = .{
     "grind",
     "wc",
     "zombie",
+    "primes",
+    "find",
+    "xargs",
 };
 
 const zapps = .{
