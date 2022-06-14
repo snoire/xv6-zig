@@ -39,6 +39,7 @@ const capps = .{
 
 const zapps = .{
     "sleep",
+    "pingpong",
 };
 
 const kfiles = .{

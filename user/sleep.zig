@@ -2,7 +2,7 @@ const std = @import("std");
 const sys = @import("usys.zig");
 const fprint = @import("print.zig").fprint;
 
-export fn main(argc: c_int, argv: [*]?[*:0]u8) noreturn {
+export fn main(argc: usize, argv: [*:null]const ?[*:0]const u8) noreturn {
     if (argc < 2) {
         fprint(2, "Usage: sleep <secs>\n", .{});
         sys.exit(1);
