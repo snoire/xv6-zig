@@ -10,7 +10,6 @@ const target: std.zig.CrossTarget = .{
 var mode: std.builtin.Mode = undefined;
 var is_strip: bool = false;
 
-var usys_step: *std.build.Step = undefined;
 var apps_step: *std.build.Step = undefined;
 
 const Lang = enum {
@@ -112,10 +111,6 @@ pub fn build(b: *Builder) void {
     const kernel_tls = b.step("kernel", "Build kernel");
     kernel_tls.dependOn(&kernel.step);
 
-    // generate usys.S
-    const usys = b.addSystemCommand(&.{ "sh", "-c", "./user/usys.pl > user/usys.S" });
-    usys_step = &usys.step;
-
     // build user applications
     apps_step = b.step("apps", "Compiles apps");
 
@@ -180,15 +175,13 @@ fn build_app(b: *Builder, comptime appName: []const u8, comptime lang: Lang) voi
 
     if (lang == .c) {
         app.addIncludePath("./");
-        app.addAssemblyFile("user/usys.S");
+        app.addObjectFile("user/usys.zig");
         app.addCSourceFiles(&.{
             "user/" ++ appName ++ ".c",
             "user/ulib.c",
             "user/printf.c",
             "user/umalloc.c",
         }, &.{});
-
-        app.step.dependOn(usys_step);
     }
 
     app.setBuildMode(mode);

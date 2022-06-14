@@ -1,5 +1,6 @@
 const std = @import("std");
 const EnumField = std.builtin.Type.EnumField;
+const print = std.fmt.comptimePrint;
 
 const syscall = enum(u8) {
     fork = 1,
@@ -33,7 +34,7 @@ comptime {
 }
 
 fn entry(comptime call: EnumField) []const u8 {
-    return std.fmt.comptimePrint(
+    return print(
         \\.global {0s}
         \\{0s}:
         \\ li a7, {1d}
@@ -45,6 +46,13 @@ fn entry(comptime call: EnumField) []const u8 {
 
 pub const fd_t = i32;
 pub const pid_t = i32;
+pub const Stat = extern struct {
+    dev: c_int,
+    ino: c_uint,
+    @"type": c_short,
+    nlink: c_short,
+    size: u64,
+};
 
 pub extern fn fork() c_int;
 pub extern fn getpid() pid_t;
@@ -65,6 +73,7 @@ pub extern fn link(oldpath: [*:0]const u8, newpath: [*:0]const u8) c_int;
 pub extern fn unlink(path: [*:0]const u8) c_int;
 pub extern fn mkdir(path: [*:0]const u8) c_int;
 pub extern fn chdir(path: [*:0]const u8) c_int;
+pub extern fn stat(noalias path: [*:0]const u8, noalias buf: *Stat) c_int;
 
 pub extern fn sleep(ntick: usize) c_int;
 pub extern fn uptime() usize;
