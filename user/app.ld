@@ -14,7 +14,7 @@ SECTIONS
         *(.text .text.*)
     } :block
 
-    .rodata : { 
+    .rodata : {
         *(.rodata .rodata.*)
     } :block
 

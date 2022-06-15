@@ -87,12 +87,7 @@ pub fn build(b: *Builder) void {
 
     inline for (kfiles) |f| {
         const path = "kernel/" ++ f;
-
-        if (std.mem.eql(u8, ".S", std.fs.path.extension(f))) {
-            kernel.addAssemblyFile(path);
-        } else {
-            kernel.addCSourceFile(path, &.{});
-        }
+        kernel.addObjectFile(path);
     }
 
     kernel.setLinkerScriptPath(.{ .path = "kernel/kernel.ld" });
@@ -190,7 +185,7 @@ fn build_app(b: *Builder, comptime appName: []const u8, comptime lang: Lang) voi
     app.code_model = .medium;
     app.strip = is_strip;
 
-    app.setLinkerScriptPath(.{ .path = "linker.ld" });
+    app.setLinkerScriptPath(.{ .path = "user/app.ld" });
     app.omit_frame_pointer = false;
 
     app.override_dest_dir = .{ .custom = "apps/" };
