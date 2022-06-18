@@ -8,7 +8,7 @@ const target: std.zig.CrossTarget = .{
 };
 
 var mode: std.builtin.Mode = undefined;
-var is_strip: bool = false;
+var strip: bool = false;
 
 var apps_step: *std.build.Step = undefined;
 
@@ -80,7 +80,7 @@ const kfiles = .{
 
 pub fn build(b: *Builder) void {
     mode = b.standardReleaseOptions();
-    is_strip = b.option(bool, "strip", "Removes symbols and sections from file") orelse false;
+    strip = b.option(bool, "strip", "Removes symbols and sections from file") orelse false;
 
     // build kernel
     const kernel = b.addExecutable("kernel", null);
@@ -95,7 +95,7 @@ pub fn build(b: *Builder) void {
     kernel.setTarget(target);
 
     kernel.code_model = .medium;
-    kernel.strip = is_strip;
+    kernel.strip = strip;
 
     kernel.omit_frame_pointer = false;
     kernel.disable_sanitize_c = true; // TODO: fix it
@@ -138,7 +138,8 @@ pub fn build(b: *Builder) void {
         fs.addArg(b.pathJoin(&.{ b.install_prefix, "apps", app }));
     }
 
-    fs.step.dependOn(b.getInstallStep());
+    fs.step.dependOn(apps_step);
+    b.getInstallStep().dependOn(&fs.step);
 
     const fs_tls = b.step("fs", "Build fs.img");
     fs_tls.dependOn(&fs.step);
@@ -161,7 +162,8 @@ pub fn build(b: *Builder) void {
         // zig fmt: on
     });
 
-    qemu.step.dependOn(b.getInstallStep());
+    qemu.step.dependOn(&kernel.step);
+    qemu.step.dependOn(&fs.step);
     qemu_tls.dependOn(&qemu.step);
 }
 
@@ -179,17 +181,16 @@ fn build_app(b: *Builder, comptime appName: []const u8, comptime lang: Lang) voi
         }, &.{});
     }
 
-    app.setBuildMode(mode);
+    app.setBuildMode(.ReleaseSafe);
     app.setTarget(target);
 
     app.code_model = .medium;
-    app.strip = is_strip;
+    app.strip = true;
 
     app.setLinkerScriptPath(.{ .path = "user/app.ld" });
     app.omit_frame_pointer = false;
 
-    app.override_dest_dir = .{ .custom = "apps/" };
-    app.install();
+    app.setOutputDir(b.pathJoin(&.{ b.install_prefix, "apps/" }));
 
     apps_step.dependOn(&app.step);
 }
