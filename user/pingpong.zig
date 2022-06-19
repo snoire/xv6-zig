@@ -1,7 +1,9 @@
 const std = @import("std");
 const sys = @import("usys.zig");
-const print = @import("print.zig").print;
-const fprint = @import("print.zig").fprint;
+const lib = @import("ulib.zig");
+
+const print = lib.print;
+const fprint = lib.fprint;
 
 //        read                                write
 //       <----- parent_fd[0] -- parent_fd[1] <------
@@ -9,7 +11,7 @@ const fprint = @import("print.zig").fprint;
 //       ------> child_fd[1] -- child_fd[0]  ------->
 //        write                                read
 
-export fn main(_: usize, _: [*:null]const ?[*:0]const u8) noreturn {
+export fn main() noreturn {
     var buf: [7:0]u8 = undefined;
     var parent_fd: [2]c_int = undefined;
     var child_fd: [2]c_int = undefined;

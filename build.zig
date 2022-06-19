@@ -28,7 +28,7 @@ const capps = .{
     "ls",
     "mkdir",
     "rm",
-    "sh",
+    //"sh",
     "stressfs",
     "usertests",
     "grind",
@@ -42,6 +42,7 @@ const capps = .{
 const zapps = .{
     "sleep",
     "pingpong",
+    "sh",
 };
 
 const kfiles = .{

@@ -17,3 +17,5 @@ user/usys.S
 .gdbinit
 zig-cache/
 zig-out/
+.cache/
+compile_commands.json
