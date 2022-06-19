@@ -49,7 +49,7 @@ pub const pid_t = i32;
 pub const Stat = extern struct {
     dev: c_int,
     ino: c_uint,
-    @"type": c_short,
+    type: c_short,
     nlink: c_short,
     size: u64,
 };
