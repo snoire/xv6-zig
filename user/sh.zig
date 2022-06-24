@@ -108,6 +108,9 @@ const Parser = struct {
         while (self.pos < self.buf.len) : (self.pos += 1) {
             if (in(self.buf[self.pos], whitespace ++ symbols)) break;
         }
+
+        // The string is not currently null-terminated, although we cast it
+        // to `[*:0]const u8`. Do not use it until the whole cmd is parsed.
         return Token{ .cmd = @ptrCast([*:0]const u8, self.buf[start..self.pos]) };
     }
 };
@@ -115,6 +118,14 @@ const Parser = struct {
 pub fn panic(msg: []const u8, _: ?*std.builtin.StackTrace) noreturn {
     @setCold(true);
     out.print(color.red ++ "PANIC: {s}!\n" ++ color.none, .{msg}) catch {};
+
+    const first_ret_addr = @returnAddress();
+    var it = std.debug.StackIterator.init(first_ret_addr, null);
+
+    try out.print("Stack Trace:\n", .{});
+    while (it.next()) |ret_addr| {
+        try out.print(" 0x{x}\n", .{ret_addr});
+    }
     while (true) {}
 }
 
