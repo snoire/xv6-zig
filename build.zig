@@ -119,18 +119,19 @@ pub fn build(b: *Builder) void {
     }
 
     // build mkfs
-    const mkfs = b.addExecutable("mkfs", null);
-
+    const mkfs = b.addExecutable("mkfs", "mkfs/mkfs.zig");
     mkfs.addIncludePath("./");
-    mkfs.addCSourceFile("mkfs/mkfs.c", &.{"-fno-sanitize=undefined"});
-    mkfs.linkLibC();
 
+    mkfs.setBuildMode(mode);
+    mkfs.single_threaded = true;
     mkfs.override_dest_dir = .{ .custom = "./" };
     mkfs.install();
 
+    const mkfs_tls = b.step("mkfs", "Build mkfs");
+    mkfs_tls.dependOn(&b.addInstallArtifact(mkfs).step);
+
     // build fs.img
     const fs = mkfs.run();
-    //fs.print = true;
 
     fs.addArg(b.pathJoin(&.{ b.install_prefix, "fs.img" }));
     fs.addArg("README");
@@ -164,7 +165,7 @@ pub fn build(b: *Builder) void {
     });
 
     qemu.step.dependOn(&kernel.step);
-    qemu.step.dependOn(&fs.step);
+    //qemu.step.dependOn(&fs.step);
     qemu_tls.dependOn(&qemu.step);
 }
 
