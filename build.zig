@@ -134,7 +134,7 @@ pub fn build(b: *Builder) void {
     const fs = mkfs.run();
 
     fs.addArg(b.pathJoin(&.{ b.install_prefix, "fs.img" }));
-    fs.addArg("README");
+    fs.addArg("README.md");
 
     inline for (capps ++ zapps) |app| {
         fs.addArg(b.pathJoin(&.{ b.install_prefix, "apps", app }));
