@@ -147,26 +147,59 @@ pub fn build(b: *Builder) void {
     fs_tls.dependOn(&fs.step);
 
     // run qemu
-    var qemu_tls = b.step("run", "Run xv6 in QEMU");
-    var qemu = b.addSystemCommand(&.{
-        // zig fmt: off
-        "qemu-system-riscv64",
-        "-machine", "virt",
-        "-bios", "none",
+    const kernel_path = b.pathJoin(&.{ b.install_prefix, "kernel" });
+    const fs_img_path = b.pathJoin(&.{ b.install_prefix, "fs.img" });
+    const qemu_cmd = "qemu-system-riscv64";
+    const qemu_args = [_][]const u8{ // zig fmt: off
+        "-machine",     "virt",
+        "-bios",        "none",
         //"-cpu", "rv64,pmp=false", // can't start?
-        "-kernel", b.pathJoin(&.{ b.install_prefix, "kernel" }),
-        "-m", "128M",
-        "-smp", "3", // TODO
+        "-kernel",      kernel_path,
+        "-m",           "128M",
+        "-smp",         "3", // TODO
         "-nographic",
-        "-drive", b.fmt("file={s},if=none,format=raw,id=x0", .{b.pathJoin(&.{ b.install_prefix, "fs.img" })}),
-        "-device", "virtio-blk-device,drive=x0,bus=virtio-mmio-bus.0",
+        "-drive",       b.fmt("file={s},if=none,format=raw,id=x0", .{fs_img_path}),
+        "-device",      "virtio-blk-device,drive=x0,bus=virtio-mmio-bus.0",
         // TODO: netdev?
-        // zig fmt: on
-    });
+    }; // zig fmt: on
+
+    var run_tls = b.step("run", "Run xv6 in QEMU");
+    var run = b.addSystemCommand(&.{qemu_cmd});
+    run.addArgs(&qemu_args);
+
+    run.step.dependOn(&kernel.step);
+    run_tls.dependOn(&run.step);
+
+    // run qemu with gdb server
+    var qemu_tls = b.step("qemu", "Run xv6 in QEMU with gdb server");
+    var qemu = b.addSystemCommand(&.{qemu_cmd});
+    qemu.addArgs(&qemu_args);
+    qemu.addArgs(&.{ "-gdb", "tcp::26002", "-S" });
 
     qemu.step.dependOn(&kernel.step);
-    //qemu.step.dependOn(&fs.step);
     qemu_tls.dependOn(&qemu.step);
+
+    // debug with gdb
+    var gdb_tls = b.step("gdb", "Debug with gdb");
+    var gdb = b.addSystemCommand(&.{
+        "riscv64-unknown-elf-gdb",
+        kernel_path,
+        "-q",
+    });
+
+    gdb.step.dependOn(&kernel.step);
+    gdb_tls.dependOn(&gdb.step);
+
+    // display code information
+    var objdump_tls = b.step("code", "Display code information");
+    var objdump = b.addSystemCommand(&.{
+        "riscv64-unknown-elf-objdump",
+        "-SD",
+        kernel_path,
+    });
+
+    objdump.step.dependOn(&kernel.step);
+    objdump_tls.dependOn(&objdump.step);
 }
 
 fn build_app(b: *Builder, comptime appName: []const u8, comptime lang: Lang) void {
