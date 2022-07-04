@@ -46,7 +46,8 @@ const zapps = .{
 };
 
 const kfiles = .{
-    "entry.S",
+    //"entry.S",
+    "kernel.zig",
     "swtch.S",
     "trampoline.S",
     "kernelvec.S",
@@ -185,6 +186,9 @@ pub fn build(b: *Builder) void {
         "riscv64-unknown-elf-gdb",
         kernel_path,
         "-q",
+        "-n",
+        "-x",
+        "gdbinit",
     });
 
     gdb.step.dependOn(&kernel.step);
@@ -198,7 +202,7 @@ pub fn build(b: *Builder) void {
         kernel_path,
     });
 
-    objdump.step.dependOn(&kernel.step);
+    objdump.step.dependOn(&b.addInstallArtifact(kernel).step);
     objdump_tls.dependOn(&objdump.step);
 }
 
