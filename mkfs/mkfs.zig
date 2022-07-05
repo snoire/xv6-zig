@@ -211,8 +211,9 @@ pub fn main() !void {
 
     for (args[2..]) |app| {
         const shortname = blk: {
-            const basename = std.fs.path.basename(app);
-            break :blk std.mem.trimLeft(u8, basename, "_");
+            const name1 = std.fs.path.basename(app);
+            const name2 = std.mem.trimLeft(u8, name1, "_");
+            break :blk std.meta.assumeSentinel(name2, 0);
         };
 
         const file = try std.fs.cwd().openFile(app, .{});
@@ -223,10 +224,9 @@ pub fn main() !void {
 
         var de = c.dirent{
             .inum = toLittle(u16, fileino.inum),
-            .name = .{0} ** c.DIRSIZ,
+            .name = undefined,
         };
-        assert(shortname.len < c.DIRSIZ);
-        std.mem.copy(u8, &de.name, shortname);
+        std.mem.copy(u8, &de.name, shortname[0 .. shortname.len + 1]);
         try disk.iappend(&rootino, std.mem.asBytes(&de));
 
         var buf: [BSIZE]u8 = undefined;
