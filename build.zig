@@ -46,7 +46,6 @@ const zapps = .{
 };
 
 const kfiles = .{
-    //"entry.S",
     "kernel.zig",
     "swtch.S",
     "trampoline.S",
@@ -71,7 +70,6 @@ const kfiles = .{
     "plic.c",
     "virtio_disk.c",
 
-    "start.c",
     "console.c",
     "printf.c",
     "uart.c",
@@ -86,6 +84,7 @@ pub fn build(b: *Builder) void {
 
     // build kernel
     const kernel = b.addExecutable("kernel", null);
+    kernel.addIncludePath("./");
 
     inline for (kfiles) |f| {
         const path = "kernel/" ++ f;
