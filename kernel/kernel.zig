@@ -8,7 +8,7 @@ const csr = register.csr;
 const gpr = register.gpr;
 
 export var stack0: [c.NCPU * 4096]u8 align(16) = undefined;
-extern fn main() void;
+const main = @import("main.zig").main;
 // assembly code in kernelvec.S for machine-mode timer interrupt.
 extern fn timervec() void;
 

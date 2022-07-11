@@ -53,7 +53,6 @@ const kfiles = .{
 
     "kalloc.c",
     "string.c",
-    "main.c",
     "vm.c",
     "proc.c",
     "trap.c",
