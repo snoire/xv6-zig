@@ -1,9 +1,9 @@
 const c = @cImport({
-    @cInclude("kernel/types.h");
-    @cInclude("kernel/param.h");
-    @cInclude("kernel/memlayout.h");
-    @cInclude("kernel/riscv.h");
-    @cInclude("kernel/defs.h");
+    @cInclude("types.h");
+    @cInclude("param.h");
+    @cInclude("memlayout.h");
+    @cInclude("riscv.h");
+    @cInclude("defs.h");
 });
 const std = @import("std");
 var started = std.atomic.Atomic(bool).init(false);

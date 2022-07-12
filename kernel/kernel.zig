@@ -1,6 +1,6 @@
 const c = @cImport({
-    @cInclude("kernel/param.h");
-    @cInclude("kernel/memlayout.h");
+    @cInclude("param.h");
+    @cInclude("memlayout.h");
 });
 const std = @import("std");
 const register = @import("register.zig");

@@ -83,7 +83,7 @@ pub fn build(b: *Builder) void {
 
     // build kernel
     const kernel = b.addExecutable("kernel", null);
-    kernel.addIncludePath("./");
+    kernel.addIncludePath("kernel/");
 
     inline for (kfiles) |f| {
         const path = "kernel/" ++ f;
