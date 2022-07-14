@@ -101,7 +101,8 @@ pub fn build(b: *Builder) void {
     kernel.disable_sanitize_c = true; // TODO: fix it
 
     kernel.override_dest_dir = .{ .custom = "./" };
-    kernel.install();
+    const install_kernel = b.addInstallArtifact(kernel);
+    b.getInstallStep().dependOn(&install_kernel.step);
 
     const kernel_tls = b.step("kernel", "Build kernel");
     kernel_tls.dependOn(&kernel.step);
@@ -124,7 +125,6 @@ pub fn build(b: *Builder) void {
     mkfs.setBuildMode(mode);
     mkfs.single_threaded = true;
     mkfs.override_dest_dir = .{ .custom = "./" };
-    mkfs.install();
 
     const mkfs_tls = b.step("mkfs", "Build mkfs");
     mkfs_tls.dependOn(&b.addInstallArtifact(mkfs).step);
@@ -145,7 +145,7 @@ pub fn build(b: *Builder) void {
     const fs_tls = b.step("fs", "Build fs.img");
     fs_tls.dependOn(&fs.step);
 
-    // run qemu
+    // run xv6 in qemu
     const kernel_path = b.pathJoin(&.{ b.install_prefix, "kernel" });
     const fs_img_path = b.pathJoin(&.{ b.install_prefix, "fs.img" });
     const qemu_cmd = "qemu-system-riscv64";
@@ -166,7 +166,7 @@ pub fn build(b: *Builder) void {
     var run = b.addSystemCommand(&.{qemu_cmd});
     run.addArgs(&qemu_args);
 
-    run.step.dependOn(&kernel.step);
+    run.step.dependOn(&install_kernel.step); // TODO: depends on fs.img
     run_tls.dependOn(&run.step);
 
     // run qemu with gdb server
@@ -175,7 +175,7 @@ pub fn build(b: *Builder) void {
     qemu.addArgs(&qemu_args);
     qemu.addArgs(&.{ "-gdb", "tcp::26002", "-S" });
 
-    qemu.step.dependOn(&kernel.step);
+    qemu.step.dependOn(&install_kernel.step);
     qemu_tls.dependOn(&qemu.step);
 
     // debug with gdb
@@ -200,7 +200,7 @@ pub fn build(b: *Builder) void {
         kernel_path,
     });
 
-    objdump.step.dependOn(&b.addInstallArtifact(kernel).step);
+    objdump.step.dependOn(&install_kernel.step);
     objdump_tls.dependOn(&objdump.step);
 }
 
@@ -227,7 +227,6 @@ fn build_app(b: *Builder, comptime appName: []const u8, comptime lang: Lang) voi
     app.setLinkerScriptPath(.{ .path = "user/app.ld" });
     app.omit_frame_pointer = false;
 
-    app.setOutputDir(b.pathJoin(&.{ b.install_prefix, "apps/" }));
-
-    apps_step.dependOn(&app.step);
+    app.override_dest_dir = .{ .custom = "apps/" };
+    apps_step.dependOn(&b.addInstallArtifact(app).step);
 }
