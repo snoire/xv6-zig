@@ -60,6 +60,7 @@ const Disk = struct {
 
     /// buf must be little endian data
     fn wsect(self: Self, sec: usize, offset: usize, buf: []const u8) !usize {
+        if (sec >= c.FSSIZE) return error.TOO_LARGE;
         try self.file.seekTo(sec * BSIZE + offset);
 
         // make sure we don't write to the next sector
@@ -79,7 +80,7 @@ const Disk = struct {
         type: u16,
         nlink: u16 = 1,
         size: u32 = 0,
-        addrs: [c.NDIRECT + 1]u32 = .{0} ** (c.NDIRECT + 1),
+        addrs: [c.NDIRECT + 1 + 1]u32 = .{0} ** (c.NDIRECT + 1 + 1),
 
         /// convert to little endian
         fn dinode(self: Inode) c.dinode {
@@ -112,6 +113,79 @@ const Disk = struct {
         _ = self.wsect(sec, offset, std.mem.asBytes(&ino.dinode())) catch @panic("winode error");
     }
 
+    /// Return the disk block address of the nth block in inode.
+    /// If there is no such block, bmap allocates one.
+    fn bmap(self: *Self, ino: *Inode, blk_num: usize) !usize {
+        var bn = blk_num;
+
+        // direct block
+        if (bn < c.NDIRECT) {
+            if (ino.addrs[bn] == 0) {
+                ino.addrs[bn] = self.freeblock;
+                self.freeblock += 1;
+            }
+            return ino.addrs[bn];
+        }
+
+        // singly-indirect block
+        bn -= c.NDIRECT;
+        if (bn < c.NINDIRECT) {
+            var singly_blk: [c.NINDIRECT]u32 = .{0} ** c.NINDIRECT;
+            const idx = c.NDIRECT; // the index of singly-indirect block
+
+            if (ino.addrs[idx] == 0) {
+                ino.addrs[idx] = self.freeblock;
+                self.freeblock += 1;
+            } else {
+                try self.rsect(ino.addrs[idx], @ptrCast(*[BSIZE]u8, &singly_blk));
+            }
+
+            if (singly_blk[bn] == 0) {
+                singly_blk[bn] = toLittle(u32, self.freeblock);
+                self.freeblock += 1;
+                _ = try self.wsect(ino.addrs[idx], bn * @sizeOf(u32), std.mem.asBytes(&singly_blk[bn]));
+            }
+
+            return singly_blk[bn];
+        }
+
+        // doubly-indirect block
+        bn -= c.NINDIRECT;
+        if (bn < c.ND_INDIRECT) {
+            var doubly_blk: [c.NINDIRECT]u32 = .{0} ** c.NINDIRECT;
+            const idx = c.NDIRECT + 1; // the index of doubly-indirect block
+
+            if (ino.addrs[idx] == 0) {
+                ino.addrs[idx] = self.freeblock;
+                self.freeblock += 1;
+            } else {
+                try self.rsect(ino.addrs[idx], @ptrCast(*[BSIZE]u8, &doubly_blk));
+            }
+
+            var singly_blk: [c.NINDIRECT]u32 = .{0} ** c.NINDIRECT;
+            const idx2 = bn / c.NINDIRECT;
+
+            if (doubly_blk[idx2] == 0) {
+                doubly_blk[idx2] = toLittle(u32, self.freeblock);
+                self.freeblock += 1;
+                _ = try self.wsect(ino.addrs[idx], idx2 * @sizeOf(u32), std.mem.asBytes(&doubly_blk[idx2]));
+            } else {
+                try self.rsect(doubly_blk[idx2], @ptrCast(*[BSIZE]u8, &singly_blk));
+            }
+
+            const idx3 = bn % c.NINDIRECT;
+            if (singly_blk[idx3] == 0) {
+                singly_blk[idx3] = toLittle(u32, self.freeblock);
+                self.freeblock += 1;
+                _ = try self.wsect(doubly_blk[idx2], idx3 * @sizeOf(u32), std.mem.asBytes(&singly_blk[idx3]));
+            }
+
+            return singly_blk[idx3];
+        }
+
+        unreachable; // out of range
+    }
+
     /// buf must be little endian data
     fn iappend(self: *Self, ino: *Inode, buf: []const u8) !void {
         var n: usize = 0;
@@ -121,35 +195,10 @@ const Disk = struct {
             const fbn = filesize / BSIZE;
             assert(fbn < c.MAXFILE);
 
-            const block = if (fbn < c.NDIRECT) blk1: {
-                if (ino.addrs[fbn] == 0) {
-                    ino.addrs[fbn] = self.freeblock;
-                    self.freeblock += 1;
-                }
-
-                break :blk1 ino.addrs[fbn];
-            } else blk2: {
-                var indirect: [c.NINDIRECT]u32 = .{0} ** c.NINDIRECT;
-
-                if (ino.addrs[c.NDIRECT] == 0) {
-                    ino.addrs[c.NDIRECT] = self.freeblock;
-                    self.freeblock += 1;
-                } else {
-                    try self.rsect(ino.addrs[c.NDIRECT], @ptrCast(*[BSIZE]u8, &indirect));
-                }
-
-                const ibn = fbn - c.NDIRECT;
-                if (indirect[ibn] == 0) {
-                    indirect[ibn] = toLittle(u32, self.freeblock);
-                    self.freeblock += 1;
-                    _ = try self.wsect(ino.addrs[c.NDIRECT], ibn * @sizeOf(u32), std.mem.asBytes(&indirect[ibn]));
-                }
-
-                break :blk2 indirect[ibn];
-            };
-
+            const block = try self.bmap(ino, fbn);
             const offset = filesize - (fbn * BSIZE);
             const nbytes = try self.wsect(block, offset, buf[n..]);
+
             filesize += @intCast(u32, nbytes);
             n += nbytes;
         }

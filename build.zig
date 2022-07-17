@@ -218,11 +218,9 @@ fn build_app(b: *Builder, comptime appName: []const u8, comptime lang: Lang) voi
         }, &.{});
     }
 
-    app.setBuildMode(.ReleaseSafe);
+    app.setBuildMode(mode);
     app.setTarget(target);
-
     app.code_model = .medium;
-    app.strip = true;
 
     app.setLinkerScriptPath(.{ .path = "user/app.ld" });
     app.omit_frame_pointer = false;
