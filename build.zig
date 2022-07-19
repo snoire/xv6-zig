@@ -216,6 +216,9 @@ fn build_app(b: *Builder, comptime appName: []const u8, comptime lang: Lang) voi
             "user/printf.c",
             "user/umalloc.c",
         }, &.{});
+    } else {
+        app.addIncludePath("./");
+        app.addCSourceFile("user/umalloc.c", &.{});
     }
 
     app.setBuildMode(mode);

@@ -88,3 +88,11 @@ malloc(uint nbytes)
         return 0;
   }
 }
+
+uint
+malloc_usable_size(void *ptr)
+{
+  if (ptr == 0) return 0;
+  Header *hp = (Header*)ptr - 1;
+  return hp->s.size * sizeof(Header);
+}
