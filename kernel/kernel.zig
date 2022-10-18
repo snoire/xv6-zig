@@ -42,7 +42,7 @@ export fn start() callconv(.C) void {
 
     // set M Exception Program Counter to main, for mret.
     // requires gcc -mcmodel=medany
-    csr.write("mepc", @ptrToInt(main));
+    csr.write("mepc", @ptrToInt(&main));
 
     // disable paging for now.
     csr.write("satp", 0);
@@ -85,7 +85,7 @@ fn timerinit(id: usize) void {
     csr.write("mscratch", @ptrToInt(scratch));
 
     // set the machine-mode trap handler.
-    csr.write("mtvec", @ptrToInt(timervec));
+    csr.write("mtvec", @ptrToInt(&timervec));
 
     // enable machine-mode interrupts.
     csr.set("mstatus", csr.mstatus.mie);

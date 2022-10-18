@@ -115,11 +115,11 @@ const Parser = struct {
     }
 };
 
-pub fn panic(msg: []const u8, _: ?*std.builtin.StackTrace) noreturn {
+pub fn panic(msg: []const u8, _: ?*std.builtin.StackTrace, return_addr: ?usize) noreturn {
     @setCold(true);
     out.print(color.red ++ "PANIC: {s}!\n" ++ color.none, .{msg}) catch {};
 
-    const first_ret_addr = @returnAddress();
+    const first_ret_addr = return_addr orelse @returnAddress();
     var it = std.debug.StackIterator.init(first_ret_addr, null);
 
     try out.print("Stack Trace:\n", .{});
@@ -182,7 +182,7 @@ fn runcmd(cmd: Cmd) noreturn {
             const argv = @ptrCast([*:null]const ?[*:0]const u8, &exec.argv);
             _ = sys.exec(exec.argv[0].?, argv);
 
-            try out.print("exec {s} failed\n", .{exec.argv[0]});
+            try out.print("exec {?s} failed\n", .{exec.argv[0]});
         },
         else => {
             try out.print("unsupported cmd: {any}\n", .{cmd});

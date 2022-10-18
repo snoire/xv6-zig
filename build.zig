@@ -104,7 +104,6 @@ pub fn build(b: *Builder) void {
     const install_kernel = b.addInstallArtifact(kernel);
     b.getInstallStep().dependOn(&install_kernel.step);
 
-    kernel.use_stage1 = true;
     const kernel_tls = b.step("kernel", "Build kernel");
     kernel_tls.dependOn(&kernel.step);
 
@@ -228,7 +227,6 @@ fn build_app(b: *Builder, comptime appName: []const u8, comptime lang: Lang) voi
 
     app.setLinkerScriptPath(.{ .path = "user/app.ld" });
     app.omit_frame_pointer = false;
-    app.use_stage1 = true;
 
     app.override_dest_dir = .{ .custom = "apps/" };
     apps_step.dependOn(&b.addInstallArtifact(app).step);
