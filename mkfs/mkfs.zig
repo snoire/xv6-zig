@@ -11,13 +11,16 @@ const assert = std.debug.assert;
 const toLittle = std.mem.nativeToLittle; // convert to riscv byte order
 
 const NINODES = 200;
-
-// Inodes per block.
-const IPB = @intCast(u32, c.IPB);
 const BSIZE = @intCast(u32, c.BSIZE);
 
+// workaround for translate-c bug
+const NINDIRECT = BSIZE / @sizeOf(c_uint);
+const ND_INDIRECT = NINDIRECT * NINDIRECT;
+const MAXFILE = c.NDIRECT + NINDIRECT + ND_INDIRECT;
+const IPB = BSIZE / @sizeOf(c.dinode); // Inodes per block.
+
 const nbitmap = c.FSSIZE / (BSIZE * 8) + 1;
-const ninodeblocks = NINODES / c.IPB + 1;
+const ninodeblocks = NINODES / IPB + 1;
 const nlog = c.LOGSIZE;
 
 // 1 fs block = 1 disk sector
@@ -129,8 +132,8 @@ const Disk = struct {
 
         // singly-indirect block
         bn -= c.NDIRECT;
-        if (bn < c.NINDIRECT) {
-            var singly_blk: [c.NINDIRECT]u32 = .{0} ** c.NINDIRECT;
+        if (bn < NINDIRECT) {
+            var singly_blk: [NINDIRECT]u32 = .{0} ** NINDIRECT;
             const idx = c.NDIRECT; // the index of singly-indirect block
 
             if (ino.addrs[idx] == 0) {
@@ -150,9 +153,9 @@ const Disk = struct {
         }
 
         // doubly-indirect block
-        bn -= c.NINDIRECT;
-        if (bn < c.ND_INDIRECT) {
-            var doubly_blk: [c.NINDIRECT]u32 = .{0} ** c.NINDIRECT;
+        bn -= NINDIRECT;
+        if (bn < ND_INDIRECT) {
+            var doubly_blk: [NINDIRECT]u32 = .{0} ** NINDIRECT;
             const idx = c.NDIRECT + 1; // the index of doubly-indirect block
 
             if (ino.addrs[idx] == 0) {
@@ -162,8 +165,8 @@ const Disk = struct {
                 try self.rsect(ino.addrs[idx], @ptrCast(*[BSIZE]u8, &doubly_blk));
             }
 
-            var singly_blk: [c.NINDIRECT]u32 = .{0} ** c.NINDIRECT;
-            const idx2 = bn / c.NINDIRECT;
+            var singly_blk: [NINDIRECT]u32 = .{0} ** NINDIRECT;
+            const idx2 = bn / NINDIRECT;
 
             if (doubly_blk[idx2] == 0) {
                 doubly_blk[idx2] = toLittle(u32, self.freeblock);
@@ -173,7 +176,7 @@ const Disk = struct {
                 try self.rsect(doubly_blk[idx2], @ptrCast(*[BSIZE]u8, &singly_blk));
             }
 
-            const idx3 = bn % c.NINDIRECT;
+            const idx3 = bn % NINDIRECT;
             if (singly_blk[idx3] == 0) {
                 singly_blk[idx3] = toLittle(u32, self.freeblock);
                 self.freeblock += 1;
@@ -193,7 +196,7 @@ const Disk = struct {
 
         while (n < buf.len) {
             const fbn = filesize / BSIZE;
-            assert(fbn < c.MAXFILE);
+            assert(fbn < MAXFILE);
 
             const block = try self.bmap(ino, fbn);
             const offset = filesize - (fbn * BSIZE);
