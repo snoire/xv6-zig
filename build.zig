@@ -90,6 +90,11 @@ pub fn build(b: *Builder) void {
         kernel.addObjectFile(path);
     }
 
+    // workaround for https://github.com/ziglang/zig/issues/12533
+    if (mode != .Debug) {
+        kernel.addObjectFile("kernel/workaround.c");
+    }
+
     kernel.setLinkerScriptPath(.{ .path = "kernel/kernel.ld" });
     kernel.setBuildMode(mode);
     kernel.setTarget(target);
