@@ -265,7 +265,7 @@ pub fn main() !void {
         const shortname = blk: {
             const name1 = std.fs.path.basename(app);
             const name2 = std.mem.trimLeft(u8, name1, "_");
-            break :blk std.meta.assumeSentinel(name2, 0);
+            break :blk @ptrCast([:0]const u8, name2);
         };
 
         const file = try std.fs.cwd().openFile(app, .{});
