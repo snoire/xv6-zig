@@ -1,5 +1,4 @@
 const std = @import("std");
-const Builder = std.build.Builder;
 
 const target: std.zig.CrossTarget = .{
     .cpu_arch = .riscv64,
@@ -7,7 +6,7 @@ const target: std.zig.CrossTarget = .{
     .abi = .none,
 };
 
-var mode: std.builtin.Mode = undefined;
+var optimize: std.builtin.Mode = undefined;
 var strip: bool = false;
 
 var apps_step: *std.build.Step = undefined;
@@ -77,12 +76,17 @@ const kfiles = .{
     //"kcsan.c",
 };
 
-pub fn build(b: *Builder) void {
-    mode = b.standardReleaseOptions();
+pub fn build(b: *std.Build) void {
+    optimize = b.standardOptimizeOption(.{});
     strip = b.option(bool, "strip", "Removes symbols and sections from file") orelse false;
 
     // build kernel
-    const kernel = b.addExecutable("kernel", null);
+    const kernel = b.addExecutable(.{
+        .name = "kernel",
+        .root_source_file = null,
+        .target = target,
+        .optimize = optimize,
+    });
     kernel.addIncludePath("kernel/");
 
     inline for (kfiles) |f| {
@@ -91,13 +95,11 @@ pub fn build(b: *Builder) void {
     }
 
     // workaround for https://github.com/ziglang/zig/issues/12533
-    if (mode != .Debug) {
+    if (optimize != .Debug) {
         kernel.addObjectFile("kernel/workaround.c");
     }
 
     kernel.setLinkerScriptPath(.{ .path = "kernel/kernel.ld" });
-    kernel.setBuildMode(mode);
-    kernel.setTarget(target);
 
     kernel.code_model = .medium;
     kernel.strip = strip;
@@ -116,18 +118,21 @@ pub fn build(b: *Builder) void {
     apps_step = b.step("apps", "Compiles apps");
 
     inline for (capps) |app| {
-        build_app(b, app, .c);
+        buildApp(b, app, .c);
     }
 
     inline for (zapps) |app| {
-        build_app(b, app, .zig);
+        buildApp(b, app, .zig);
     }
 
     // build mkfs
-    const mkfs = b.addExecutable("mkfs", "mkfs/mkfs.zig");
+    const mkfs = b.addExecutable(.{
+        .name = "mkfs",
+        .root_source_file = .{ .path = "mkfs/mkfs.zig" },
+        .optimize = optimize,
+    });
     mkfs.addIncludePath("./");
 
-    mkfs.setBuildMode(mode);
     mkfs.single_threaded = true;
     mkfs.override_dest_dir = .{ .custom = "./" };
 
@@ -209,8 +214,13 @@ pub fn build(b: *Builder) void {
     objdump_tls.dependOn(&objdump.step);
 }
 
-fn build_app(b: *Builder, comptime appName: []const u8, comptime lang: Lang) void {
-    const app = b.addExecutable(appName, if (lang == .zig) "user/" ++ appName ++ ".zig" else null);
+fn buildApp(b: *std.Build, comptime appName: []const u8, comptime lang: Lang) void {
+    const app = b.addExecutable(.{
+        .name = appName,
+        .root_source_file = if (lang == .zig) .{ .path = "user/" ++ appName ++ ".zig" } else null,
+        .target = target,
+        .optimize = optimize,
+    });
 
     if (lang == .c) {
         app.addIncludePath("./");
@@ -226,8 +236,6 @@ fn build_app(b: *Builder, comptime appName: []const u8, comptime lang: Lang) voi
         app.addCSourceFile("user/umalloc.c", &.{});
     }
 
-    app.setBuildMode(mode);
-    app.setTarget(target);
     app.code_model = .medium;
 
     app.setLinkerScriptPath(.{ .path = "user/app.ld" });
