@@ -167,6 +167,7 @@ pub fn build(b: *std.Build) void {
         "-m",           "128M",
         "-smp",         "3", // TODO
         "-nographic",
+        "-global",      "virtio-mmio.force-legacy=false",
         "-drive",       b.fmt("file={s},if=none,format=raw,id=x0", .{fs_img_path}),
         "-device",      "virtio-blk-device,drive=x0,bus=virtio-mmio-bus.0",
         // TODO: netdev?
