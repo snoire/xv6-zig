@@ -45,7 +45,6 @@ const zapps = .{
 };
 
 const kfiles = .{
-    "kernel.zig",
     "swtch.S",
     "trampoline.S",
     "kernelvec.S",
@@ -83,7 +82,7 @@ pub fn build(b: *std.Build) void {
     // build kernel
     const kernel = b.addExecutable(.{
         .name = "kernel",
-        .root_source_file = null,
+        .root_source_file = .{ .path = "kernel/kernel.zig" },
         .target = target,
         .optimize = optimize,
     });

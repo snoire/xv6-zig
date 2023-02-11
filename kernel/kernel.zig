@@ -2,6 +2,12 @@ const c = @cImport({
     @cInclude("param.h");
     @cInclude("memlayout.h");
 });
+
+// for unused export functions
+comptime {
+    _ = @import("syscall.zig");
+}
+
 const std = @import("std");
 const register = @import("register.zig");
 const csr = register.csr;
