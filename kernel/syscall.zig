@@ -3,14 +3,6 @@ const kernel = @import("xv6.zig");
 const Proc = kernel.proc.Proc;
 const PageTable = kernel.proc.PageTable;
 
-const c = @cImport({
-    @cInclude("types.h");
-    @cInclude("param.h");
-    @cInclude("memlayout.h");
-    @cInclude("riscv.h");
-    @cInclude("defs.h");
-});
-
 extern fn copyin(pagetable: PageTable, dst: [*:0]u8, srcva: usize, len: usize) c_int;
 
 /// Fetch the uint64 at addr from the current process.
@@ -149,7 +141,7 @@ pub export fn syscall() void {
         // and store its return value in p.trapframe.a0
         p.trapframe.a0 = syscalls[num]();
     } else {
-        c.printf("%d %s: unknown sys call %d\n", p.pid, &p.name, num);
+        kernel.print("{} {s}: unknown sys call {}\n", .{ p.pid, &p.name, num });
         p.trapframe.a0 = std.math.maxInt(usize);
     }
 }

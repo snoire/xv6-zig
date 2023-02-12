@@ -94,11 +94,6 @@ pub fn build(b: *std.Build) void {
         kernel.addObjectFile(path);
     }
 
-    // workaround for https://github.com/ziglang/zig/issues/12533
-    if (optimize != .Debug) {
-        kernel.addObjectFile("kernel/workaround.c");
-    }
-
     kernel.setLinkerScriptPath(.{ .path = "kernel/kernel.ld" });
 
     kernel.code_model = .medium;

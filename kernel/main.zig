@@ -6,6 +6,7 @@ const c = @cImport({
     @cInclude("defs.h");
 });
 const std = @import("std");
+const kernel = @import("xv6.zig");
 var started = std.atomic.Atomic(bool).init(false);
 
 pub fn main() callconv(.C) void {
@@ -13,9 +14,14 @@ pub fn main() callconv(.C) void {
     if (id == 0) {
         c.consoleinit();
         c.printfinit();
-        c.printf("\n");
-        c.printf("xv6 kernel is booting\n");
-        c.printf("\n");
+
+        kernel.print(
+            \\
+            \\xv6 kernel is booting
+            \\
+            \\
+        , .{});
+
         c.kinit(); // physical page allocator
         c.kvminit(); // create kernel page table
         c.kvminithart(); // turn on paging
@@ -34,7 +40,7 @@ pub fn main() callconv(.C) void {
     } else {
         while (!started.load(.SeqCst)) {}
 
-        c.printf("hart %d starting\n", id);
+        kernel.print("hart {} starting\n", .{id});
         c.kvminithart(); // turn on paging
         c.trapinithart(); // install kernel trap vector
         c.plicinithart(); // ask PLIC for device interrupts

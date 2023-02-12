@@ -89,7 +89,10 @@ fn timerinit(id: u8) void {
     csr.set("mie", csr.mie.mtie);
 }
 
-// for unused export functions
+// force unused export functions to be compiled
 comptime {
     _ = @import("syscall.zig");
+
+    // workaround for https://github.com/ziglang/zig/issues/12533
+    if (@import("builtin").mode != .Debug) _ = @import("print.zig");
 }
