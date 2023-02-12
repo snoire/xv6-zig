@@ -1,4 +1,5 @@
-const proc = @import("proc.zig");
+const kernel = @import("xv6.zig");
+const Cpu = kernel.proc.Cpu;
 
 // Mutual exclusion lock.
 pub const SpinLock = extern struct {
@@ -9,5 +10,5 @@ pub const SpinLock = extern struct {
     /// Name of lock.
     name: [*:0]u8,
     /// The cpu holding the lock.
-    cpu: *proc.Cpu,
+    cpu: *Cpu,
 };

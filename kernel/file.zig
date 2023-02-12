@@ -1,6 +1,7 @@
-const Pipe = @import("pipe.zig").Pipe;
-const SleepLock = @import("sleeplock.zig").SleepLock;
-const NDIRECT = @import("fs.zig").NDIRECT;
+const kernel = @import("xv6.zig");
+const Pipe = kernel.pipe.Pipe;
+const SleepLock = kernel.sleeplock.SleepLock;
+const NDIRECT = kernel.fs.NDIRECT;
 
 pub const File = extern struct {
     type: enum(c_int) { none, pipe, inode, device },

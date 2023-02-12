@@ -1,24 +1,14 @@
-const c = @cImport({
-    @cInclude("param.h");
-    @cInclude("memlayout.h");
-});
-
-// for unused export functions
-comptime {
-    _ = @import("syscall.zig");
-}
-
 const std = @import("std");
-const register = @import("register.zig");
-const csr = register.csr;
-const gpr = register.gpr;
+const xv6 = @import("xv6.zig");
+const csr = xv6.register.csr;
+const gpr = xv6.register.gpr;
 
-export var stack0: [c.NCPU * 4096]u8 align(16) = undefined;
+export var stack0: [xv6.NCPU * 4096]u8 align(16) = undefined;
 const main = @import("main.zig").main;
 // assembly code in kernelvec.S for machine-mode timer interrupt.
 extern fn timervec() void;
 
-var timer_scratch: [c.NCPU][5]usize = undefined;
+var timer_scratch: [xv6.NCPU][5]usize = undefined;
 
 export fn _entry() linksection(".kernel_entry") callconv(.Naked) noreturn {
     asm volatile (
@@ -66,7 +56,7 @@ export fn start() callconv(.C) void {
     // ask for clock interrupts.
     // each CPU has a separate source of timer interrupts.
     const id = csr.read("mhartid");
-    timerinit(id);
+    timerinit(@intCast(u8, id));
 
     // keep each CPU's hartid in its tp register, for cpuid().
     gpr.write("tp", id);
@@ -75,18 +65,17 @@ export fn start() callconv(.C) void {
     asm volatile ("mret");
 }
 
-fn timerinit(id: usize) void {
+fn timerinit(id: u8) void {
     // ask the CLINT for a timer interrupt.
     const interval = 1000000; // cycles; about 1/10th second in qemu.
-    const mtimecmp = @intCast(usize, c.CLINT_MTIMECMP(@intCast(c_int, id))); // TODO
-    @intToPtr(*usize, mtimecmp).* = c.CLINT_MTIME + interval;
+    xv6.Clint.mtimecmp(id, xv6.Clint.mtime() + interval);
 
     // prepare information in scratch[] for timervec.
     // scratch[0..2] : space for timervec to save registers.
     // scratch[3] : address of CLINT MTIMECMP register.
     // scratch[4] : desired interval (in cycles) between timer interrupts.
     var scratch = &timer_scratch[id];
-    scratch[3] = mtimecmp;
+    scratch[3] = xv6.Clint.mtimecmp_addr(id);
     scratch[4] = interval;
     csr.write("mscratch", @ptrToInt(scratch));
 
@@ -98,4 +87,9 @@ fn timerinit(id: usize) void {
 
     // enable machine-mode timer interrupts.
     csr.set("mie", csr.mie.mtie);
+}
+
+// for unused export functions
+comptime {
+    _ = @import("syscall.zig");
 }

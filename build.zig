@@ -10,6 +10,7 @@ var optimize: std.builtin.Mode = undefined;
 var strip: bool = false;
 
 var apps_step: *std.build.Step = undefined;
+var kernel_lib: *std.Build.Module = undefined;
 
 const Lang = enum {
     c,
@@ -113,6 +114,9 @@ pub fn build(b: *std.Build) void {
     const kernel_tls = b.step("kernel", "Build kernel");
     kernel_tls.dependOn(&kernel.step);
 
+    // kernel lib
+    kernel_lib = b.createModule(.{ .source_file = std.build.FileSource.relative("kernel/xv6.zig") });
+
     // build user applications
     apps_step = b.step("apps", "Compiles apps");
 
@@ -131,6 +135,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     mkfs.addIncludePath("./");
+    mkfs.addModule("kernel", kernel_lib);
 
     mkfs.single_threaded = true;
     mkfs.override_dest_dir = .{ .custom = "./" };

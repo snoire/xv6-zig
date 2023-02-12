@@ -1,11 +1,10 @@
-const file = @import("file.zig");
-const File = file.File;
-const Inode = file.Inode;
-const SpinLock = @import("spinlock.zig").SpinLock;
+const kernel = @import("xv6.zig");
+const File = kernel.file.File;
+const Inode = kernel.file.Inode;
+const SpinLock = kernel.spinlock.SpinLock;
+const NOFILE = kernel.NOFILE;
 
 pub const PageTable = *usize; // 512 PTEs
-/// open files per process
-const NOFILE = 16;
 
 /// Saved registers for kernel context switches.
 const Context = extern struct {

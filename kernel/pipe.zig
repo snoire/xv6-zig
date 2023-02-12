@@ -1,4 +1,5 @@
-const SpinLock = @import("spinlock.zig").SpinLock;
+const kernel = @import("xv6.zig");
+const SpinLock = kernel.spinlock.SpinLock;
 
 const PIPESIZE = 512;
 

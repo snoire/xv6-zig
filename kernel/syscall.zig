@@ -1,7 +1,7 @@
 const std = @import("std");
-const proc = @import("proc.zig");
-const Proc = proc.Proc;
-const PageTable = proc.PageTable;
+const kernel = @import("xv6.zig");
+const Proc = kernel.proc.Proc;
+const PageTable = kernel.proc.PageTable;
 
 const c = @cImport({
     @cInclude("types.h");

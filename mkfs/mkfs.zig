@@ -1,35 +1,27 @@
 const std = @import("std");
-const c = @cImport({
-    @cInclude("kernel/types.h");
-    @cInclude("kernel/fs.h");
-    @cInclude("kernel/stat.h");
-    @cInclude("kernel/param.h");
-});
-
+const kernel = @import("kernel");
+const fs = kernel.fs;
 const print = std.debug.print;
 const assert = std.debug.assert;
 const toLittle = std.mem.nativeToLittle; // convert to riscv byte order
 
+const Dinode = fs.Dinode;
+const Dirent = fs.Dirent;
+const FileType = kernel.stat.Stat.Type;
+
 const NINODES = 200;
-const BSIZE = @intCast(u32, c.BSIZE);
 
-// workaround for translate-c bug
-const NINDIRECT = BSIZE / @sizeOf(c_uint);
-const ND_INDIRECT = NINDIRECT * NINDIRECT;
-const MAXFILE = c.NDIRECT + NINDIRECT + ND_INDIRECT;
-const IPB = BSIZE / @sizeOf(c.dinode); // Inodes per block.
-
-const nbitmap = c.FSSIZE / (BSIZE * 8) + 1;
-const ninodeblocks = NINODES / IPB + 1;
-const nlog = c.LOGSIZE;
+const nbitmap = kernel.FSSIZE / (fs.BSIZE * 8) + 1;
+const ninodeblocks = NINODES / fs.IPB + 1;
+const nlog = kernel.LOGSIZE;
 
 // 1 fs block = 1 disk sector
 const nmeta = 2 + nlog + ninodeblocks + nbitmap;
-const nblocks = c.FSSIZE - nmeta;
+const nblocks = kernel.FSSIZE - nmeta;
 
-const superblk: c.superblock = .{
-    .magic = c.FSMAGIC,
-    .size = toLittle(u32, c.FSSIZE),
+const superblk: fs.SuperBlock = .{
+    .magic = fs.SuperBlock.FSMAGIC,
+    .size = toLittle(u32, kernel.FSSIZE),
     .nblocks = toLittle(u32, nblocks),
     .ninodes = toLittle(u32, NINODES),
     .nlog = toLittle(u32, nlog),
@@ -51,7 +43,7 @@ const Disk = struct {
         const f = try std.fs.cwd().createFile(path, .{ .read = true });
 
         // allocate a sparse file
-        try f.seekTo(c.FSSIZE * BSIZE - 1);
+        try f.seekTo(kernel.FSSIZE * fs.BSIZE - 1);
         _ = try f.write("$");
 
         return Self{ .file = f };
@@ -63,17 +55,17 @@ const Disk = struct {
 
     /// buf must be little endian data
     fn wsect(self: Self, sec: usize, offset: usize, buf: []const u8) !usize {
-        if (sec >= c.FSSIZE) return error.TOO_LARGE;
-        try self.file.seekTo(sec * BSIZE + offset);
+        if (sec >= kernel.FSSIZE) return error.TOO_LARGE;
+        try self.file.seekTo(sec * fs.BSIZE + offset);
 
         // make sure we don't write to the next sector
-        const len = if (offset + buf.len > BSIZE) BSIZE - offset else buf.len;
+        const len = if (offset + buf.len > fs.BSIZE) fs.BSIZE - offset else buf.len;
         try self.file.writeAll(buf[0..len]);
         return len;
     }
 
-    fn rsect(self: Self, sec: usize, buf: *[BSIZE]u8) !void {
-        try self.file.seekTo(sec * BSIZE);
+    fn rsect(self: Self, sec: usize, buf: *[fs.BSIZE]u8) !void {
+        try self.file.seekTo(sec * fs.BSIZE);
         _ = try self.file.readAll(buf);
     }
 
@@ -83,11 +75,11 @@ const Disk = struct {
         type: u16,
         nlink: u16 = 1,
         size: u32 = 0,
-        addrs: [c.NDIRECT + 1 + 1]u32 = .{0} ** (c.NDIRECT + 1 + 1),
+        addrs: [fs.NDIRECT + 1 + 1]u32 = .{0} ** (fs.NDIRECT + 1 + 1),
 
         /// convert to little endian
-        fn dinode(self: Inode) c.dinode {
-            var node: c.dinode = undefined;
+        fn dinode(self: Inode) Dinode {
+            var node: Dinode = undefined;
 
             node.type = @intCast(i16, toLittle(u16, self.type));
             node.nlink = @intCast(i16, toLittle(u16, self.nlink));
@@ -102,17 +94,17 @@ const Disk = struct {
     };
 
     /// Caller must call winode on result.
-    fn ialloc(self: *Self, @"type": u16) Inode {
+    fn ialloc(self: *Self, @"type": FileType) Inode {
         defer self.freeinode += 1;
         return .{
             .inum = self.freeinode,
-            .type = @"type",
+            .type = @enumToInt(@"type"),
         };
     }
 
     fn winode(self: Self, ino: Inode) void {
-        const sec = ino.inum / IPB + superblk.inodestart;
-        const offset = (ino.inum % IPB) * @sizeOf(c.dinode);
+        const sec = ino.inum / fs.IPB + superblk.inodestart;
+        const offset = (ino.inum % fs.IPB) * @sizeOf(Dinode);
         _ = self.wsect(sec, offset, std.mem.asBytes(&ino.dinode())) catch @panic("winode error");
     }
 
@@ -122,7 +114,7 @@ const Disk = struct {
         var bn = blk_num;
 
         // direct block
-        if (bn < c.NDIRECT) {
+        if (bn < fs.NDIRECT) {
             if (ino.addrs[bn] == 0) {
                 ino.addrs[bn] = self.freeblock;
                 self.freeblock += 1;
@@ -131,16 +123,16 @@ const Disk = struct {
         }
 
         // singly-indirect block
-        bn -= c.NDIRECT;
-        if (bn < NINDIRECT) {
-            var singly_blk: [NINDIRECT]u32 = .{0} ** NINDIRECT;
-            const idx = c.NDIRECT; // the index of singly-indirect block
+        bn -= fs.NDIRECT;
+        if (bn < fs.NINDIRECT) {
+            var singly_blk: [fs.NINDIRECT]u32 = .{0} ** fs.NINDIRECT;
+            const idx = fs.NDIRECT; // the index of singly-indirect block
 
             if (ino.addrs[idx] == 0) {
                 ino.addrs[idx] = self.freeblock;
                 self.freeblock += 1;
             } else {
-                try self.rsect(ino.addrs[idx], @ptrCast(*[BSIZE]u8, &singly_blk));
+                try self.rsect(ino.addrs[idx], @ptrCast(*[fs.BSIZE]u8, &singly_blk));
             }
 
             if (singly_blk[bn] == 0) {
@@ -153,30 +145,30 @@ const Disk = struct {
         }
 
         // doubly-indirect block
-        bn -= NINDIRECT;
-        if (bn < ND_INDIRECT) {
-            var doubly_blk: [NINDIRECT]u32 = .{0} ** NINDIRECT;
-            const idx = c.NDIRECT + 1; // the index of doubly-indirect block
+        bn -= fs.NINDIRECT;
+        if (bn < fs.ND_INDIRECT) {
+            var doubly_blk: [fs.NINDIRECT]u32 = .{0} ** fs.NINDIRECT;
+            const idx = fs.NDIRECT + 1; // the index of doubly-indirect block
 
             if (ino.addrs[idx] == 0) {
                 ino.addrs[idx] = self.freeblock;
                 self.freeblock += 1;
             } else {
-                try self.rsect(ino.addrs[idx], @ptrCast(*[BSIZE]u8, &doubly_blk));
+                try self.rsect(ino.addrs[idx], @ptrCast(*[fs.BSIZE]u8, &doubly_blk));
             }
 
-            var singly_blk: [NINDIRECT]u32 = .{0} ** NINDIRECT;
-            const idx2 = bn / NINDIRECT;
+            var singly_blk: [fs.NINDIRECT]u32 = .{0} ** fs.NINDIRECT;
+            const idx2 = bn / fs.NINDIRECT;
 
             if (doubly_blk[idx2] == 0) {
                 doubly_blk[idx2] = toLittle(u32, self.freeblock);
                 self.freeblock += 1;
                 _ = try self.wsect(ino.addrs[idx], idx2 * @sizeOf(u32), std.mem.asBytes(&doubly_blk[idx2]));
             } else {
-                try self.rsect(doubly_blk[idx2], @ptrCast(*[BSIZE]u8, &singly_blk));
+                try self.rsect(doubly_blk[idx2], @ptrCast(*[fs.BSIZE]u8, &singly_blk));
             }
 
-            const idx3 = bn % NINDIRECT;
+            const idx3 = bn % fs.NINDIRECT;
             if (singly_blk[idx3] == 0) {
                 singly_blk[idx3] = toLittle(u32, self.freeblock);
                 self.freeblock += 1;
@@ -195,11 +187,11 @@ const Disk = struct {
         var filesize = ino.size;
 
         while (n < buf.len) {
-            const fbn = filesize / BSIZE;
-            assert(fbn < MAXFILE);
+            const fbn = filesize / fs.BSIZE;
+            assert(fbn < fs.MAXFILE);
 
             const block = try self.bmap(ino, fbn);
-            const offset = filesize - (fbn * BSIZE);
+            const offset = filesize - (fbn * fs.BSIZE);
             const nbytes = try self.wsect(block, offset, buf[n..]);
 
             filesize += @intCast(u32, nbytes);
@@ -211,9 +203,9 @@ const Disk = struct {
 
     fn balloc(self: *Self) !void {
         print("balloc: first {} blocks have been allocated\n", .{self.freeblock});
-        assert(self.freeblock < BSIZE * 8);
+        assert(self.freeblock < fs.BSIZE * 8);
 
-        var buf: [BSIZE]u8 = .{0} ** BSIZE;
+        var buf: [fs.BSIZE]u8 = .{0} ** fs.BSIZE;
         var i: usize = 0;
         while (i < self.freeblock) : (i += 1) {
             buf[i / 8] |= @as(u8, 0x1) << @intCast(u3, i % 8);
@@ -225,8 +217,8 @@ const Disk = struct {
 };
 
 pub fn main() !void {
-    comptime assert(BSIZE % @sizeOf(c.dinode) == 0);
-    comptime assert(BSIZE % @sizeOf(c.dirent) == 0);
+    comptime assert(fs.BSIZE % @sizeOf(Dinode) == 0);
+    comptime assert(fs.BSIZE % @sizeOf(Dirent) == 0);
 
     const allocator = std.heap.page_allocator;
     var args = try std.process.argsAlloc(allocator);
@@ -239,7 +231,7 @@ pub fn main() !void {
 
     print(
         "nmeta {} (boot, super, log blocks {} inode blocks {}, bitmap blocks {}) blocks {} total {}\n",
-        .{ nmeta, nlog, ninodeblocks, nbitmap, nblocks, c.FSSIZE },
+        .{ nmeta, nlog, ninodeblocks, nbitmap, nblocks, kernel.FSSIZE },
     );
 
     var disk = try Disk.init(args[1]);
@@ -249,15 +241,15 @@ pub fn main() !void {
     _ = try disk.wsect(1, 0, std.mem.asBytes(&superblk));
 
     // allocate root inode
-    var rootino = disk.ialloc(c.T_DIR);
+    var rootino = disk.ialloc(.dir);
     defer disk.winode(rootino);
 
-    assert(rootino.inum == c.ROOTINO);
+    assert(rootino.inum == fs.ROOTINO);
 
     inline for (.{ ".", ".." }) |name| {
-        try disk.iappend(&rootino, std.mem.asBytes(&c.dirent{
+        try disk.iappend(&rootino, std.mem.asBytes(&Dirent{
             .inum = toLittle(u16, rootino.inum),
-            .name = name.* ++ [_]u8{0} ** (c.DIRSIZ - name.len), // .name = name[0..c.DIRSIZ],
+            .name = name.* ++ [_]u8{0} ** (fs.Dirent.DIRSIZ - name.len), // .name = name[0..c.DIRSIZ],
         }));
     }
 
@@ -271,17 +263,17 @@ pub fn main() !void {
         const file = try std.fs.cwd().openFile(app, .{});
         defer file.close();
 
-        var fileino = disk.ialloc(c.T_FILE);
+        var fileino = disk.ialloc(.file);
         defer disk.winode(fileino);
 
-        var de = c.dirent{
+        var de = Dirent{
             .inum = toLittle(u16, fileino.inum),
             .name = undefined,
         };
         std.mem.copy(u8, &de.name, shortname[0 .. shortname.len + 1]);
         try disk.iappend(&rootino, std.mem.asBytes(&de));
 
-        var buf: [BSIZE]u8 = undefined;
+        var buf: [fs.BSIZE]u8 = undefined;
         while (true) {
             const amt = try file.read(&buf);
             if (amt == 0) break;
@@ -290,7 +282,7 @@ pub fn main() !void {
     }
 
     // fix size of root inode dir
-    rootino.size = (rootino.size / BSIZE + 1) * BSIZE;
+    rootino.size = (rootino.size / fs.BSIZE + 1) * fs.BSIZE;
 
     // write to bitmap
     try disk.balloc();
