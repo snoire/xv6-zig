@@ -79,7 +79,6 @@ argstr(int n, char *buf, int max)
   return fetchstr(addr, buf, max);
 }
 
-#if 0
 // Prototypes for the functions that handle system calls.
 extern uint64 sys_fork(void);
 extern uint64 sys_exit(void);
@@ -146,4 +145,3 @@ syscall(void)
     p->trapframe->a0 = -1;
   }
 }
-#endif

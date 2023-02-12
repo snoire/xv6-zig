@@ -3,7 +3,7 @@ const File = file.File;
 const Inode = file.Inode;
 const SpinLock = @import("spinlock.zig").SpinLock;
 
-const PageTable = *usize; // 512 PTEs
+pub const PageTable = *usize; // 512 PTEs
 /// open files per process
 const NOFILE = 16;
 
