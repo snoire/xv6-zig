@@ -79,6 +79,7 @@ const kfiles = .{
 pub fn build(b: *std.Build) void {
     optimize = b.standardOptimizeOption(.{});
     strip = b.option(bool, "strip", "Removes symbols and sections from file") orelse false;
+    const cpus = b.option([]const u8, "CPUS", "Number of CPUS") orelse "3";
 
     // build kernel
     const kernel = b.addExecutable(.{
@@ -164,7 +165,7 @@ pub fn build(b: *std.Build) void {
         //"-cpu", "rv64,pmp=false", // can't start?
         "-kernel",      kernel_path,
         "-m",           "128M",
-        "-smp",         "3", // TODO
+        "-smp",         cpus,
         "-nographic",
         "-global",      "virtio-mmio.force-legacy=false",
         "-drive",       b.fmt("file={s},if=none,format=raw,id=x0", .{fs_img_path}),
