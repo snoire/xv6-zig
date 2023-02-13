@@ -1,9 +1,9 @@
 OUTPUT_ARCH( "riscv" )
-
 ENTRY( main )
 
 PHDRS {
-    block PT_LOAD FLAGS(7);   /* RWX */
+    code PT_LOAD FLAGS(5);   /* R-X */
+    data PT_LOAD FLAGS(6);   /* RW- */
 }
 
 SECTIONS
@@ -12,19 +12,29 @@ SECTIONS
 
     .text : {
         *(.text .text.*)
-    } :block
+    } :code
 
     .rodata : {
+        . = ALIGN(16);
+        *(.srodata .srodata.*) /* do not need to distinguish this from .rodata */
+        . = ALIGN(16);
         *(.rodata .rodata.*)
-    } :block
+        . = ALIGN(0x1000);
+    } :code
 
     .data : {
-        *(.sdata .sdata.*)
+        . = ALIGN(16);
+        *(.sdata .sdata.*) /* do not need to distinguish this from .data */
+        . = ALIGN(16);
         *(.data .data.*)
-    } :block
+    } :data
 
     .bss :{
-        *(.sbss .sbss.*)
+        . = ALIGN(16);
+        *(.sbss .sbss.*) /* do not need to distinguish this from .bss */
+        . = ALIGN(16);
         *(.bss .bss.*)
-    } :block
+    } :data
+
+    PROVIDE(end = .);
 }
