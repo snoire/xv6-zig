@@ -142,6 +142,21 @@ pub fn build(b: *std.Build) void {
     // build fs.img
     const fs = mkfs.run();
 
+    // fs.img will be regenerated when these files are modified.
+    fs.extra_file_dependencies = comptime blk: {
+        var cfiles: [capps.len][]const u8 = undefined;
+        for (capps) |name, i| {
+            cfiles[i] = "user/" ++ name ++ ".c";
+        }
+
+        var zfiles: [zapps.len][]const u8 = undefined;
+        for (zapps) |name, i| {
+            zfiles[i] = "user/" ++ name ++ ".zig";
+        }
+
+        break :blk &(cfiles ++ zfiles);
+    };
+
     fs.addArg(b.pathJoin(&.{ b.install_prefix, "fs.img" }));
     fs.addArg("README.md");
 
@@ -175,14 +190,17 @@ pub fn build(b: *std.Build) void {
 
     var run_tls = b.step("run", "Run xv6 in QEMU");
     var run = b.addSystemCommand(&.{qemu_cmd});
+    run.condition = .always;
     run.addArgs(&qemu_args);
 
-    run.step.dependOn(&install_kernel.step); // TODO: depends on fs.img
+    run.step.dependOn(&install_kernel.step);
+    run.step.dependOn(&fs.step);
     run_tls.dependOn(&run.step);
 
     // run qemu with gdb server
     var qemu_tls = b.step("qemu", "Run xv6 in QEMU with gdb server");
     var qemu = b.addSystemCommand(&.{qemu_cmd});
+    qemu.condition = .always;
     qemu.addArgs(&qemu_args);
     qemu.addArgs(&.{ "-gdb", "tcp::26002", "-S" });
 
@@ -200,6 +218,7 @@ pub fn build(b: *std.Build) void {
         "gdbinit",
     });
 
+    gdb.condition = .always;
     gdb.step.dependOn(&kernel.step);
     gdb_tls.dependOn(&gdb.step);
 

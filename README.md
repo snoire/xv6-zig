@@ -3,6 +3,5 @@
 
 ## Building
 ```sh
-$ zig build
 $ zig build run
 ```
