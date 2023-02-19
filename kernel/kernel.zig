@@ -2,9 +2,9 @@ const std = @import("std");
 const xv6 = @import("xv6.zig");
 const csr = xv6.register.csr;
 const gpr = xv6.register.gpr;
+const main = @import("main.zig").main;
 
 export var stack0: [xv6.NCPU * 4096]u8 align(16) = undefined;
-const main = @import("main.zig").main;
 // assembly code in kernelvec.S for machine-mode timer interrupt.
 extern fn timervec() void;
 
@@ -92,7 +92,4 @@ fn timerinit(id: u8) void {
 // force unused export functions to be compiled
 comptime {
     _ = @import("syscall.zig");
-
-    // workaround for https://github.com/ziglang/zig/issues/12533
-    if (@import("builtin").mode != .Debug) _ = @import("print.zig");
 }

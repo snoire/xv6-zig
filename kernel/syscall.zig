@@ -1,5 +1,6 @@
 const std = @import("std");
 const kernel = @import("xv6.zig");
+const print = kernel.print.print;
 const Proc = kernel.proc.Proc;
 const PageTable = kernel.proc.PageTable;
 
@@ -141,7 +142,7 @@ pub export fn syscall() void {
         // and store its return value in p.trapframe.a0
         p.trapframe.a0 = syscalls[num]();
     } else {
-        kernel.print("{} {s}: unknown sys call {}\n", .{ p.pid, &p.name, num });
+        print("{} {s}: unknown sys call {}\n", .{ p.pid, &p.name, num });
         p.trapframe.a0 = std.math.maxInt(usize);
     }
 }

@@ -69,7 +69,7 @@ const kfiles = .{
     "virtio_disk.c",
 
     "console.c",
-    "printf.c",
+    // "printf.c",
     "uart.c",
     "spinlock.c",
 

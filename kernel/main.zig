@@ -7,15 +7,16 @@ const c = @cImport({
 });
 const std = @import("std");
 const kernel = @import("xv6.zig");
+const print = kernel.print.print;
 var started = std.atomic.Atomic(bool).init(false);
 
 pub fn main() callconv(.C) void {
     const id = c.cpuid();
     if (id == 0) {
         c.consoleinit();
-        c.printfinit();
+        kernel.print.init();
 
-        kernel.print(
+        print(
             \\
             \\xv6 kernel is booting
             \\
@@ -40,7 +41,7 @@ pub fn main() callconv(.C) void {
     } else {
         while (!started.load(.SeqCst)) {}
 
-        kernel.print("hart {} starting\n", .{id});
+        print("hart {} starting\n", .{id});
         c.kvminithart(); // turn on paging
         c.trapinithart(); // install kernel trap vector
         c.plicinithart(); // ask PLIC for device interrupts

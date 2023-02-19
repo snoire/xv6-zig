@@ -7,7 +7,7 @@ pub const sleeplock = @import("sleeplock.zig");
 pub const spinlock = @import("spinlock.zig");
 pub const stat = @import("stat.zig");
 pub const syscall = @import("syscall.zig");
-pub const print = @import("print.zig").print;
+pub const print = @import("print.zig");
 
 /// maximum number of processes
 pub const NPROC = 64;

@@ -7,10 +7,12 @@ extern fn initlock(lk: *SpinLock, name: [*:0]const u8) void;
 extern fn acquire(lk: *SpinLock) void;
 extern fn release(lk: *SpinLock) void;
 
-extern var pr: struct {
+export var panicked: c_int = 0;
+
+var pr: struct {
     lock: SpinLock,
     locking: bool,
-};
+} = undefined;
 
 fn write(_: void, string: []const u8) error{}!usize {
     for (string) |char| {
@@ -28,6 +30,64 @@ pub fn print(comptime format: []const u8, args: anytype) void {
     std.fmt.format(Writer{ .context = {} }, format, args) catch unreachable;
 
     if (locking) release(&pr.lock);
+}
+
+export fn printf(format: [*:0]const u8, ...) void {
+    var ap = @cVaStart();
+    defer @cVaEnd(&ap);
+
+    var state: enum { normal, wait_for_specifier } = .normal;
+
+    for (std.mem.span(format)) |char| {
+        if (state == .normal) {
+            if (char == '%') {
+                state = .wait_for_specifier;
+            } else {
+                print("{c}", .{char});
+            }
+        } else { // conversion specifiers
+            switch (char) {
+                'd' => print("{d}", .{@cVaArg(&ap, c_int)}),
+                'x' => print("{x}", .{@cVaArg(&ap, c_int)}),
+                'p' => print("{p}", .{@cVaArg(&ap, *usize)}),
+                's' => print("{s}", .{@cVaArg(&ap, [*:0]const u8)}),
+                '%' => print("%", .{}),
+                // Print unknown % sequence to draw attention.
+                else => print("%{c}", .{char}),
+            }
+            state = .normal;
+        }
+    }
+}
+
+pub fn init() void {
+    initlock(&pr.lock, "pr");
+    pr.locking = true;
+}
+
+fn panic(msg: []const u8, _: ?*std.builtin.StackTrace, return_addr: ?usize) noreturn {
+    @setCold(true);
+    pr.locking = false;
+    print("PANIC: {s}!\n", .{msg});
+
+    const first_ret_addr = return_addr orelse @returnAddress();
+    var it = std.debug.StackIterator.init(first_ret_addr, null);
+
+    print("Stack Trace:\n", .{});
+    while (it.next()) |ret_addr| {
+        print(" 0x{x}\n", .{ret_addr});
+    }
+
+    panicked = 1; // freeze uart output from other CPUs
+    while (true) {}
+}
+
+fn cpanic(msg: [*:0]const u8) callconv(.C) noreturn {
+    panic(std.mem.span(msg), null, null);
+}
+
+comptime {
+    @export(cpanic, .{ .name = "panic", .linkage = .Strong });
 }
 
 // workaround for https://github.com/ziglang/zig/issues/12533
