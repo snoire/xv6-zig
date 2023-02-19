@@ -1,10 +1,147 @@
-const kernel = @import("xv6.zig");
-const File = kernel.file.File;
-const Inode = kernel.file.Inode;
-const SpinLock = kernel.spinlock.SpinLock;
-const NOFILE = kernel.NOFILE;
+const fs = @import("fs.zig");
+const xv6 = @import("xv6.zig");
 
-pub const PageTable = *usize; // 512 PTEs
+/// Mutual exclusion lock.
+pub const SpinLock = extern struct {
+    /// Is the lock held?
+    locked: c_uint,
+
+    // For debugging:
+    /// Name of lock.
+    name: [*:0]u8,
+    /// The cpu holding the lock.
+    cpu: *Cpu,
+};
+
+/// Long-term locks for processes
+pub const SleepLock = extern struct {
+    /// Is the lock held?
+    locked: c_uint,
+    /// spinlock protecting this sleep lock
+    lk: SpinLock,
+
+    // For debugging:
+    /// Name of lock.
+    name: [*:0]u8,
+    /// Process holding lock
+    pid: c_int,
+};
+
+pub const Pipe = extern struct {
+    const PIPESIZE = 512;
+
+    lock: SpinLock,
+    data: [PIPESIZE]u8,
+    /// number of bytes read
+    nread: c_uint,
+    /// number of bytes written
+    nwrite: c_uint,
+    /// read fd is still open
+    readopen: c_int,
+    /// write fd is still open
+    writeopen: c_int,
+};
+
+pub const Stat = extern struct {
+    pub const Type = enum(u8) {
+        dir = 1,
+        file = 2,
+        device = 3,
+    };
+
+    /// File system's disk device
+    dev: c_int,
+    /// Inode number
+    ino: c_int,
+    /// Type of file
+    type: c_short,
+    /// Number of links to file
+    nlink: c_short,
+    /// Size of file in bytes
+    size: usize,
+};
+
+pub const File = extern struct {
+    type: enum(c_int) { none, pipe, inode, device },
+    /// reference count
+    ref: c_int,
+    readable: u8,
+    writable: u8,
+    /// FD_PIPE
+    pipe: *Pipe,
+    /// FD_INODE and FD_DEVICE
+    ip: *Inode,
+    /// FD_INODE
+    off: c_uint,
+    /// FD_DEVICE
+    major: c_short,
+};
+
+/// in-memory copy of an inode
+pub const Inode = extern struct {
+    /// Device number
+    dev: c_uint,
+    /// Inode number
+    inum: c_uint,
+    /// Reference count
+    ref: c_int,
+    /// protects everything below here
+    lock: SleepLock,
+    /// inode has been read from disk?
+    valid: c_int,
+
+    /// copy of disk inode
+    type: c_short,
+    major: c_short,
+    minor: c_short,
+    nlink: c_short,
+    size: c_uint,
+    addrs: [fs.NDIRECT + 1 + 1]c_uint,
+};
+
+// Disk layout:
+// [ boot block | super block | log | inode blocks | free bit map | data blocks]
+//
+// mkfs computes the super block and builds an initial file system. The
+// super block describes the disk layout:
+pub const SuperBlock = extern struct {
+    pub const FSMAGIC = 0x10203040;
+
+    /// Must be FSMAGIC
+    magic: c_uint,
+    /// Size of file system image (blocks)
+    size: c_uint,
+    /// Number of data blocks
+    nblocks: c_uint,
+    /// Number of inodes.
+    ninodes: c_uint,
+    /// Number of log blocks
+    nlog: c_uint,
+    /// Block number of first log block
+    logstart: c_uint,
+    /// Block number of first inode block
+    inodestart: c_uint,
+    /// Block number of first free map block
+    bmapstart: c_uint,
+};
+
+// 64 bytes
+pub const Dinode = extern struct {
+    type: c_short,
+    major: c_short,
+    minor: c_short,
+    nlink: c_short,
+    size: c_uint,
+    addrs: [fs.NDIRECT + 1 + 1]c_uint,
+};
+
+/// Directory is a file containing a sequence of dirent structures.
+pub const Dirent = extern struct {
+    pub const DIRSIZ = 14;
+
+    inum: c_ushort,
+    name: [DIRSIZ]u8,
+};
 
 /// Saved registers for kernel context switches.
 const Context = extern struct {
@@ -97,6 +234,8 @@ const TrapFrame = extern struct {
 
 /// Per-process state
 pub const Proc = extern struct {
+    pub const PageTable = *usize; // 512 PTEs
+
     lock: SpinLock,
 
     // p->lock must be held when using these:
@@ -127,7 +266,7 @@ pub const Proc = extern struct {
     /// swtch() here to run process
     context: Context,
     /// Open files
-    ofile: [NOFILE]*File,
+    ofile: [xv6.NOFILE]*File,
     /// Current directory
     cwd: *Inode,
     /// Process name (debugging)

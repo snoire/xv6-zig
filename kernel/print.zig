@@ -1,6 +1,7 @@
 const std = @import("std");
 const kernel = @import("xv6.zig");
-const SpinLock = kernel.spinlock.SpinLock;
+const c = @import("c.zig");
+const SpinLock = c.SpinLock;
 
 extern fn consputc(char: u8) void;
 extern fn initlock(lk: *SpinLock, name: [*:0]const u8) void;
@@ -91,8 +92,8 @@ comptime {
 }
 
 // workaround for https://github.com/ziglang/zig/issues/12533
-export fn putchar(c: c_int) c_int {
-    consputc(@intCast(u8, c));
+export fn putchar(char: c_int) c_int {
+    consputc(@intCast(u8, char));
     return 1;
 }
 export fn puts(s: [*:0]const u8) c_int {

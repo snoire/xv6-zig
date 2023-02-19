@@ -1,11 +1,8 @@
-pub const file = @import("file.zig");
+pub const c = @import("c.zig");
 pub const fs = @import("fs.zig");
-pub const pipe = @import("pipe.zig");
-pub const proc = @import("proc.zig");
 pub const register = @import("register.zig");
-pub const sleeplock = @import("sleeplock.zig");
-pub const spinlock = @import("spinlock.zig");
-pub const stat = @import("stat.zig");
+pub const SleepLock = @import("SleepLock.zig");
+pub const SpinLock = @import("SpinLock.zig");
 pub const syscall = @import("syscall.zig");
 pub const print = @import("print.zig");
 

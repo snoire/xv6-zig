@@ -1,13 +1,15 @@
 const std = @import("std");
 const kernel = @import("kernel");
+const c = kernel.c;
 const fs = kernel.fs;
 const print = std.debug.print;
 const assert = std.debug.assert;
 const toLittle = std.mem.nativeToLittle; // convert to riscv byte order
 
-const Dinode = fs.Dinode;
-const Dirent = fs.Dirent;
-const FileType = kernel.stat.Stat.Type;
+const Dinode = c.Dinode;
+const Dirent = c.Dirent;
+const FileType = c.Stat.Type;
+const SuperBlock = c.SuperBlock;
 
 const NINODES = 200;
 
@@ -19,8 +21,8 @@ const nlog = kernel.LOGSIZE;
 const nmeta = 2 + nlog + ninodeblocks + nbitmap;
 const nblocks = kernel.FSSIZE - nmeta;
 
-const superblk: fs.SuperBlock = .{
-    .magic = fs.SuperBlock.FSMAGIC,
+const superblk: SuperBlock = .{
+    .magic = SuperBlock.FSMAGIC,
     .size = toLittle(u32, kernel.FSSIZE),
     .nblocks = toLittle(u32, nblocks),
     .ninodes = toLittle(u32, NINODES),
@@ -250,7 +252,7 @@ pub fn main() !void {
     inline for (.{ ".", ".." }) |name| {
         try disk.inodeAppend(&rootino, std.mem.asBytes(&Dirent{
             .inum = toLittle(u16, rootino.number),
-            .name = name.* ++ [_]u8{0} ** (fs.Dirent.DIRSIZ - name.len), // .name = name[0..c.DIRSIZ],
+            .name = name.* ++ [_]u8{0} ** (Dirent.DIRSIZ - name.len), // .name = name[0..c.DIRSIZ],
         }));
     }
 

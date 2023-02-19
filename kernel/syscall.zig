@@ -1,8 +1,9 @@
 const std = @import("std");
+const c = @import("c.zig");
 const kernel = @import("xv6.zig");
 const print = kernel.print.print;
-const Proc = kernel.proc.Proc;
-const PageTable = kernel.proc.PageTable;
+const Proc = c.Proc;
+const PageTable = Proc.PageTable;
 
 extern fn copyin(pagetable: PageTable, dst: [*:0]u8, srcva: usize, len: usize) c_int;
 
