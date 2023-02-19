@@ -1,6 +1,6 @@
 /// root i-number
 pub const ROOTINO = 1;
-/// block size
+/// block/sector size
 pub const BSIZE = 1024;
 
 // Disk layout:
@@ -39,6 +39,7 @@ pub const NINDIRECT = BSIZE / @sizeOf(c_uint);
 pub const ND_INDIRECT = NINDIRECT * NINDIRECT;
 pub const MAXFILE = (NDIRECT + NINDIRECT + ND_INDIRECT);
 
+// 64 bytes
 pub const Dinode = extern struct {
     type: c_short,
     major: c_short,

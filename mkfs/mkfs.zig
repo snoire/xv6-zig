@@ -33,30 +33,30 @@ const superblk: fs.SuperBlock = .{
 /// Disk layout:
 /// [ boot block (not used) | superblock | log | inode blocks | free bit map | data blocks ]
 const Disk = struct {
-    const Self = @This();
-
     file: std.fs.File,
     freeinode: u16 = 1,
+    /// the first free block that we can allocate
     freeblock: u32 = nmeta,
 
-    fn init(path: []const u8) !Self {
+    fn init(path: []const u8) !Disk {
         const f = try std.fs.cwd().createFile(path, .{ .read = true });
 
         // allocate a sparse file
         try f.seekTo(kernel.FSSIZE * fs.BSIZE - 1);
         _ = try f.write("$");
 
-        return Self{ .file = f };
+        return Disk{ .file = f };
     }
 
-    fn deinit(self: Self) void {
+    fn deinit(self: Disk) void {
+        self.writeBitmap() catch unreachable;
         self.file.close();
     }
 
     /// buf must be little endian data
-    fn wsect(self: Self, sec: usize, offset: usize, buf: []const u8) !usize {
-        if (sec >= kernel.FSSIZE) return error.TOO_LARGE;
-        try self.file.seekTo(sec * fs.BSIZE + offset);
+    fn writeSector(self: Disk, sector_number: usize, offset: usize, buf: []const u8) !usize {
+        if (sector_number >= kernel.FSSIZE) return error.TOO_LARGE;
+        try self.file.seekTo(sector_number * fs.BSIZE + offset);
 
         // make sure we don't write to the next sector
         const len = if (offset + buf.len > fs.BSIZE) fs.BSIZE - offset else buf.len;
@@ -64,14 +64,14 @@ const Disk = struct {
         return len;
     }
 
-    fn rsect(self: Self, sec: usize, buf: *[fs.BSIZE]u8) !void {
-        try self.file.seekTo(sec * fs.BSIZE);
+    fn readSector(self: Disk, sector_number: usize, buf: *[fs.BSIZE]u8) !void {
+        try self.file.seekTo(sector_number * fs.BSIZE);
         _ = try self.file.readAll(buf);
     }
 
     const Inode = struct {
         // host endian
-        inum: u16,
+        number: u16,
         type: u16,
         nlink: u16 = 1,
         size: u32 = 0,
@@ -93,33 +93,33 @@ const Disk = struct {
         }
     };
 
-    /// Caller must call winode on result.
-    fn ialloc(self: *Self, @"type": FileType) Inode {
+    /// Caller must call writeInode on result.
+    fn allocInode(self: *Disk, @"type": FileType) Inode {
         defer self.freeinode += 1;
         return .{
-            .inum = self.freeinode,
+            .number = self.freeinode,
             .type = @enumToInt(@"type"),
         };
     }
 
-    fn winode(self: Self, ino: Inode) void {
-        const sec = ino.inum / fs.IPB + superblk.inodestart;
-        const offset = (ino.inum % fs.IPB) * @sizeOf(Dinode);
-        _ = self.wsect(sec, offset, std.mem.asBytes(&ino.dinode())) catch @panic("winode error");
+    fn writeInode(self: Disk, inode: Inode) void {
+        const sector_number = inode.number / fs.IPB + superblk.inodestart;
+        const offset = (inode.number % fs.IPB) * @sizeOf(Dinode);
+        _ = self.writeSector(sector_number, offset, std.mem.asBytes(&inode.dinode())) catch @panic("winode error");
     }
 
     /// Return the disk block address of the nth block in inode.
-    /// If there is no such block, bmap allocates one.
-    fn bmap(self: *Self, ino: *Inode, blk_num: usize) !usize {
-        var bn = blk_num;
+    /// If there is no such block, bitmap allocates one.
+    fn bitmap(self: *Disk, inode: *Inode, block_number: usize) !usize {
+        var bn = block_number;
 
         // direct block
         if (bn < fs.NDIRECT) {
-            if (ino.addrs[bn] == 0) {
-                ino.addrs[bn] = self.freeblock;
+            if (inode.addrs[bn] == 0) {
+                inode.addrs[bn] = self.freeblock;
                 self.freeblock += 1;
             }
-            return ino.addrs[bn];
+            return inode.addrs[bn];
         }
 
         // singly-indirect block
@@ -128,17 +128,17 @@ const Disk = struct {
             var singly_blk: [fs.NINDIRECT]u32 = .{0} ** fs.NINDIRECT;
             const idx = fs.NDIRECT; // the index of singly-indirect block
 
-            if (ino.addrs[idx] == 0) {
-                ino.addrs[idx] = self.freeblock;
+            if (inode.addrs[idx] == 0) {
+                inode.addrs[idx] = self.freeblock;
                 self.freeblock += 1;
             } else {
-                try self.rsect(ino.addrs[idx], @ptrCast(*[fs.BSIZE]u8, &singly_blk));
+                try self.readSector(inode.addrs[idx], @ptrCast(*[fs.BSIZE]u8, &singly_blk));
             }
 
             if (singly_blk[bn] == 0) {
                 singly_blk[bn] = toLittle(u32, self.freeblock);
                 self.freeblock += 1;
-                _ = try self.wsect(ino.addrs[idx], bn * @sizeOf(u32), std.mem.asBytes(&singly_blk[bn]));
+                _ = try self.writeSector(inode.addrs[idx], bn * @sizeOf(u32), std.mem.asBytes(&singly_blk[bn]));
             }
 
             return singly_blk[bn];
@@ -150,11 +150,11 @@ const Disk = struct {
             var doubly_blk: [fs.NINDIRECT]u32 = .{0} ** fs.NINDIRECT;
             const idx = fs.NDIRECT + 1; // the index of doubly-indirect block
 
-            if (ino.addrs[idx] == 0) {
-                ino.addrs[idx] = self.freeblock;
+            if (inode.addrs[idx] == 0) {
+                inode.addrs[idx] = self.freeblock;
                 self.freeblock += 1;
             } else {
-                try self.rsect(ino.addrs[idx], @ptrCast(*[fs.BSIZE]u8, &doubly_blk));
+                try self.readSector(inode.addrs[idx], @ptrCast(*[fs.BSIZE]u8, &doubly_blk));
             }
 
             var singly_blk: [fs.NINDIRECT]u32 = .{0} ** fs.NINDIRECT;
@@ -163,16 +163,16 @@ const Disk = struct {
             if (doubly_blk[idx2] == 0) {
                 doubly_blk[idx2] = toLittle(u32, self.freeblock);
                 self.freeblock += 1;
-                _ = try self.wsect(ino.addrs[idx], idx2 * @sizeOf(u32), std.mem.asBytes(&doubly_blk[idx2]));
+                _ = try self.writeSector(inode.addrs[idx], idx2 * @sizeOf(u32), std.mem.asBytes(&doubly_blk[idx2]));
             } else {
-                try self.rsect(doubly_blk[idx2], @ptrCast(*[fs.BSIZE]u8, &singly_blk));
+                try self.readSector(doubly_blk[idx2], @ptrCast(*[fs.BSIZE]u8, &singly_blk));
             }
 
             const idx3 = bn % fs.NINDIRECT;
             if (singly_blk[idx3] == 0) {
                 singly_blk[idx3] = toLittle(u32, self.freeblock);
                 self.freeblock += 1;
-                _ = try self.wsect(doubly_blk[idx2], idx3 * @sizeOf(u32), std.mem.asBytes(&singly_blk[idx3]));
+                _ = try self.writeSector(doubly_blk[idx2], idx3 * @sizeOf(u32), std.mem.asBytes(&singly_blk[idx3]));
             }
 
             return singly_blk[idx3];
@@ -182,26 +182,27 @@ const Disk = struct {
     }
 
     /// buf must be little endian data
-    fn iappend(self: *Self, ino: *Inode, buf: []const u8) !void {
+    fn inodeAppend(self: *Disk, inode: *Inode, buf: []const u8) !void {
         var n: usize = 0;
-        var filesize = ino.size;
+        var filesize = inode.size;
 
         while (n < buf.len) {
             const fbn = filesize / fs.BSIZE;
             assert(fbn < fs.MAXFILE);
 
-            const block = try self.bmap(ino, fbn);
+            const block = try self.bitmap(inode, fbn);
             const offset = filesize - (fbn * fs.BSIZE);
-            const nbytes = try self.wsect(block, offset, buf[n..]);
+            const nbytes = try self.writeSector(block, offset, buf[n..]);
 
             filesize += @intCast(u32, nbytes);
             n += nbytes;
         }
 
-        ino.size = filesize;
+        inode.size = filesize;
     }
 
-    fn balloc(self: *Self) !void {
+    /// write to bitmap
+    fn writeBitmap(self: Disk) !void {
         print("balloc: first {} blocks have been allocated\n", .{self.freeblock});
         assert(self.freeblock < fs.BSIZE * 8);
 
@@ -212,7 +213,7 @@ const Disk = struct {
         }
 
         print("balloc: write bitmap block at sector {}\n", .{superblk.bmapstart});
-        _ = try self.wsect(superblk.bmapstart, 0, &buf);
+        _ = try self.writeSector(superblk.bmapstart, 0, &buf);
     }
 };
 
@@ -238,17 +239,17 @@ pub fn main() !void {
     defer disk.deinit();
 
     // write superblock
-    _ = try disk.wsect(1, 0, std.mem.asBytes(&superblk));
+    _ = try disk.writeSector(1, 0, std.mem.asBytes(&superblk));
 
     // allocate root inode
-    var rootino = disk.ialloc(.dir);
-    defer disk.winode(rootino);
+    var rootino = disk.allocInode(.dir);
+    defer disk.writeInode(rootino);
 
-    assert(rootino.inum == fs.ROOTINO);
+    assert(rootino.number == fs.ROOTINO);
 
     inline for (.{ ".", ".." }) |name| {
-        try disk.iappend(&rootino, std.mem.asBytes(&Dirent{
-            .inum = toLittle(u16, rootino.inum),
+        try disk.inodeAppend(&rootino, std.mem.asBytes(&Dirent{
+            .inum = toLittle(u16, rootino.number),
             .name = name.* ++ [_]u8{0} ** (fs.Dirent.DIRSIZ - name.len), // .name = name[0..c.DIRSIZ],
         }));
     }
@@ -263,27 +264,21 @@ pub fn main() !void {
         const file = try std.fs.cwd().openFile(app, .{});
         defer file.close();
 
-        var fileino = disk.ialloc(.file);
-        defer disk.winode(fileino);
+        var fileino = disk.allocInode(.file);
+        defer disk.writeInode(fileino);
 
-        var de = Dirent{
-            .inum = toLittle(u16, fileino.inum),
+        var dir_entry = Dirent{
+            .inum = toLittle(u16, fileino.number),
             .name = undefined,
         };
-        std.mem.copy(u8, &de.name, shortname[0 .. shortname.len + 1]);
-        try disk.iappend(&rootino, std.mem.asBytes(&de));
+        std.mem.copy(u8, &dir_entry.name, shortname[0 .. shortname.len + 1]);
+        try disk.inodeAppend(&rootino, std.mem.asBytes(&dir_entry));
 
         var buf: [fs.BSIZE]u8 = undefined;
         while (true) {
             const amt = try file.read(&buf);
             if (amt == 0) break;
-            try disk.iappend(&fileino, buf[0..amt]);
+            try disk.inodeAppend(&fileino, buf[0..amt]);
         }
     }
-
-    // fix size of root inode dir
-    rootino.size = (rootino.size / fs.BSIZE + 1) * fs.BSIZE;
-
-    // write to bitmap
-    try disk.balloc();
 }
