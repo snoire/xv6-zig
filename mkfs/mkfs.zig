@@ -87,7 +87,7 @@ const Disk = struct {
             node.nlink = @intCast(i16, toLittle(u16, self.nlink));
             node.size = toLittle(u32, self.size);
 
-            for (node.addrs) |*addr, i| {
+            for (&node.addrs, 0..) |*addr, i| {
                 addr.* = toLittle(u32, self.addrs[i]);
             }
 

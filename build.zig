@@ -145,12 +145,12 @@ pub fn build(b: *std.Build) void {
     // fs.img will be regenerated when these files are modified.
     fs.extra_file_dependencies = comptime blk: {
         var cfiles: [capps.len][]const u8 = undefined;
-        for (capps) |name, i| {
+        for (capps, 0..) |name, i| {
             cfiles[i] = "user/" ++ name ++ ".c";
         }
 
         var zfiles: [zapps.len][]const u8 = undefined;
-        for (zapps) |name, i| {
+        for (zapps, 0..) |name, i| {
             zfiles[i] = "user/" ++ name ++ ".zig";
         }
 
