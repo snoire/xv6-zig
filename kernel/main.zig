@@ -37,9 +37,9 @@ pub fn main() callconv(.C) void {
         c.virtio_disk_init(); // emulated hard disk
         c.userinit(); // first user process
 
-        started.store(true, .SeqCst);
+        started.store(true, .Release);
     } else {
-        while (!started.load(.SeqCst)) {}
+        while (!started.load(.Acquire)) {}
 
         print("hart {} starting\n", .{id});
         c.kvminithart(); // turn on paging

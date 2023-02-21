@@ -1,7 +1,8 @@
 const std = @import("std");
 const kernel = @import("xv6.zig");
 const c = @import("c.zig");
-const SpinLock = c.SpinLock;
+// const SpinLock = c.SpinLock;
+const SpinLock = @import("SpinLock.zig");
 
 extern fn consputc(char: u8) void;
 extern fn initlock(lk: *SpinLock, name: [*:0]const u8) void;
@@ -15,6 +16,12 @@ var pr: struct {
     locking: bool,
 } = undefined;
 
+pub fn init() void {
+    // initlock(&pr.lock, "pr");
+    pr.lock = SpinLock.init("pr");
+    pr.locking = true;
+}
+
 fn write(_: void, string: []const u8) error{}!usize {
     for (string) |char| {
         consputc(char);
@@ -26,11 +33,13 @@ const Writer = std.io.Writer(void, error{}, write);
 
 pub fn print(comptime format: []const u8, args: anytype) void {
     const locking = pr.locking;
-    if (locking) acquire(&pr.lock);
+    // if (locking) acquire(&pr.lock);
+    if (locking) pr.lock.acquire();
 
     std.fmt.format(Writer{ .context = {} }, format, args) catch unreachable;
 
-    if (locking) release(&pr.lock);
+    // if (locking) release(&pr.lock);
+    if (locking) pr.lock.release();
 }
 
 export fn printf(format: [*:0]const u8, ...) void {
@@ -59,11 +68,6 @@ export fn printf(format: [*:0]const u8, ...) void {
             state = .normal;
         }
     }
-}
-
-pub fn init() void {
-    initlock(&pr.lock, "pr");
-    pr.locking = true;
 }
 
 fn panic(msg: []const u8, _: ?*std.builtin.StackTrace, return_addr: ?usize) noreturn {

@@ -164,7 +164,7 @@ const Context = extern struct {
 };
 
 /// Per-CPU state.
-pub const Cpu = struct {
+pub const Cpu = extern struct {
     /// The process running on this cpu, or null.
     proc: ?*Proc,
     /// swtch() here to enter scheduler().
