@@ -61,8 +61,7 @@ pub const VIRTIO0 = 0x1000_1000;
 pub const VIRTIO0_IRQ = 1;
 
 /// core local interruptor (CLINT), which contains the timer.
-pub const Clint = struct {
-    const Self = @This();
+pub const clint = struct {
     const base = 0x0200_0000;
 
     /// trigger a machine-level software interrupt
@@ -75,14 +74,20 @@ pub const Clint = struct {
     pub fn mtime() u64 {
         return @intToPtr(*volatile u64, base + 0xbff8).*;
     }
-    /// The machine time compare register, a timer interrupt is fired iff mtimecmp >= mtime
-    pub fn mtimecmp(hart: u8, time: u64) void {
-        const ptr = @intToPtr([*]volatile u64, base + 0x4000);
-        ptr[hart] = time;
-    }
 
-    /// The machine time compare register address
-    pub fn mtimecmp_addr(hart: u8) usize {
-        return base + 0x4000 + 8 * @as(usize, hart);
-    }
+    /// The machine time compare register
+    pub const mtimecmp = struct {
+        const offset = 0x4000;
+
+        /// a timer interrupt is fired if mtimecmp >= mtime
+        pub fn set(hart: u8, time: u64) void {
+            const ptr = @intToPtr([*]volatile u64, base + offset);
+            ptr[hart] = time;
+        }
+
+        /// get the machine time compare register address
+        pub fn get(hart: u8) usize {
+            return base + offset + 8 * @as(usize, hart);
+        }
+    };
 };

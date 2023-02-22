@@ -21,22 +21,6 @@ pub fn init(name: []const u8) Self {
     return .{ .name = name };
 }
 
-/// disable device interrupts
-fn intrOff() void {
-    csr.clear("sstatus", csr.mstatus.sie);
-}
-
-/// enable device interrupts
-fn intrOn() void {
-    csr.set("sstatus", csr.mstatus.sie);
-}
-
-// are device interrupts enabled?
-fn intrGet() bool {
-    const mstatus = csr.read("sstatus");
-    return (mstatus & csr.mstatus.sie) != 0;
-}
-
 /// Check whether this cpu is holding the lock.
 /// Interrupts must be off.
 fn holding(self: *Self) bool {
@@ -115,6 +99,22 @@ fn popOff() void {
 
     cpu.noff -= 1;
     if (cpu.noff == 0 and cpu.intena == 1) intrOn();
+}
+
+/// disable device interrupts
+fn intrOff() void {
+    csr.sstatus.reset(.{ .sie = true });
+}
+
+/// enable device interrupts
+fn intrOn() void {
+    csr.sstatus.set(.{ .sie = true });
+}
+
+// are device interrupts enabled?
+fn intrGet() bool {
+    const sstatus = @bitCast(csr.sstatus, csr.read(.sstatus));
+    return sstatus.sie;
 }
 
 extern fn mycpu() *Cpu;
