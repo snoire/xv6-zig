@@ -1,4 +1,5 @@
 const std = @import("std");
+const xv6 = @import("kernel/xv6.zig");
 
 const target: std.zig.CrossTarget = .{
     .cpu_arch = .riscv64,
@@ -79,7 +80,13 @@ const kfiles = .{
 pub fn build(b: *std.Build) void {
     optimize = b.standardOptimizeOption(.{});
     strip = b.option(bool, "strip", "Removes symbols and sections from file") orelse false;
-    const cpus = b.option([]const u8, "CPUS", "Number of CPUS") orelse "3";
+    const cpus = blk: {
+        const option = b.option([]const u8, "CPUS", "Number of CPUS") orelse "3";
+        const message = b.fmt("CPUS must be in the range of [1-{}].", .{xv6.NCPU});
+        const number = std.fmt.parseInt(u4, option, 0) catch @panic(message);
+        if (number > xv6.NCPU or number == 0) @panic(message);
+        break :blk option;
+    };
 
     // build kernel
     const kernel = b.addExecutable(.{
