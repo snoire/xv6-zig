@@ -33,3 +33,4 @@ kernel/syscall.c
 kernel/exec.c
 kernel/trap.c
 kernel/plic.c
+kernel/bio.c

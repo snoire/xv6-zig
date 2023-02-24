@@ -38,7 +38,18 @@ pub const SleepLock = extern struct {
     name: [*:0]u8,
     /// Process holding lock
     pid: c_int,
+
+    pub const init = initsleeplock;
+    pub const acquire = acquiresleep;
+    pub const release = releasesleep;
+    pub const holding = holdingsleep;
 };
+
+// sleeplock.c
+pub extern fn initsleeplock(lock: SleepLock, [*:0]const u8) void;
+pub extern fn acquiresleep(lock: *SleepLock) void;
+pub extern fn releasesleep(lock: *SleepLock) void;
+pub extern fn holdingsleep(lock: *SleepLock) bool;
 
 pub const Pipe = extern struct {
     const PIPESIZE = 512;
@@ -315,3 +326,21 @@ pub extern fn virtio_disk_intr() void;
 
 // uart.c
 pub extern fn uartintr() void;
+
+// buf.h
+pub const Buf = extern struct {
+    valid: c_int = 0, // has data been read from disk?
+    disk: c_int = 0, // does disk "own" buf?
+    dev: c_uint = 0,
+    blockno: c_uint = 0,
+    lock: SleepLock = std.mem.zeroes(SleepLock),
+    refcnt: c_uint = 0,
+    prev: ?*Buf = null, // LRU cache list
+    next: ?*Buf = null,
+    data: [fs.BSIZE]u8 = .{0} ** fs.BSIZE,
+};
+
+// virtio_disk.c
+pub extern fn virtio_disk_rw(b: *Buf, write: bool) void;
+
+const std = @import("std");

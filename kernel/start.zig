@@ -93,6 +93,7 @@ comptime {
     _ = @import("kalloc.zig");
     _ = @import("vm.zig");
     _ = @import("proc.zig");
+    _ = @import("fs/Buffer.zig");
 }
 
 pub const os = @import("os.zig");

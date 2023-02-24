@@ -54,7 +54,7 @@ const kfiles = .{
     // "sysfile.c",
     // "exec.c",
 
-    "bio.c",
+    // "bio.c",
     "fs.c",
     "log.c",
     "file.c",
