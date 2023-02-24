@@ -24,7 +24,7 @@ pub fn init(name: []const u8) Self {
 /// Check whether this cpu is holding the lock.
 /// Interrupts must be off.
 fn holding(self: *Self) bool {
-    return self.locked.load(.Unordered) and self.cpu == mycpu();
+    return self.locked.load(.Monotonic) and self.cpu == mycpu();
 }
 
 /// Acquire the lock.
@@ -43,13 +43,7 @@ pub fn acquire(self: *Self) void {
     //   store(ptr, exchange, success_ordering)
     //   return null
     // ```
-    while (self.locked.tryCompareAndSwap(false, true, .Monotonic, .Monotonic) == true) {}
-
-    // Tell the zig compiler and the processor to not move loads or stores
-    // past this point, to ensure that the critical section's memory
-    // references happen strictly after the lock is acquired.
-    // On RISC-V, this emits a fence instruction.
-    @fence(.SeqCst);
+    while (self.locked.tryCompareAndSwap(false, true, .Acquire, .Acquire) == true) {}
 
     // Record info about lock acquisition for holding() and debugging.
     self.cpu = mycpu();
@@ -61,14 +55,6 @@ pub fn release(self: *Self) void {
 
     self.cpu = null;
 
-    // Tell the zig compiler and the CPU to not move loads or stores
-    // past this point, to ensure that all the stores in the critical
-    // section are visible to other CPUs before the lock is released,
-    // and that loads in the critical section occur strictly before
-    // the lock is released.
-    // On RISC-V, this emits a fence instruction.
-    @fence(.SeqCst);
-
     // Release the lock, equivalent to self.locked = false.
     // This code doesn't use a C assignment, since the C standard
     // implies that an assignment might be implemented with
@@ -76,7 +62,7 @@ pub fn release(self: *Self) void {
     // On RISC-V, sync_lock_release turns into an atomic swap:
     //   s1 = &self.locked
     //   amoswap.w zero, zero, (s1)
-    self.locked.store(false, .Unordered);
+    self.locked.store(false, .Release);
     popOff();
 }
 
