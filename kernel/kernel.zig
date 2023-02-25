@@ -4,7 +4,7 @@ const gpr = xv6.register.gpr;
 const clint = xv6.clint;
 const main = @import("main.zig").main;
 
-export var stack0: [xv6.NCPU * 4096]u8 align(16) = undefined;
+export var stack0: [xv6.NCPU * 1024 * 16]u8 align(16) = undefined;
 // assembly code in kernelvec.S for machine-mode timer interrupt.
 extern fn timervec() void;
 
@@ -13,9 +13,9 @@ var timer_scratch: [xv6.NCPU][5]usize = undefined;
 export fn _entry() linksection(".kernel_entry") callconv(.Naked) noreturn {
     asm volatile (
         \\  # set up a stack
-        \\  # sp = stack0 + (hartid * 4096)
+        \\  # sp = stack0 + (hartid * 1024 * 16)
         \\      la sp, stack0
-        \\      li a0, 1024*4
+        \\      li a0, 1024*16
         \\      csrr a1, mhartid
         \\      addi a1, a1, 1
         \\      mul a0, a0, a1
