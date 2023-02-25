@@ -103,7 +103,7 @@ pub const csr = struct {
         };
 
         const tag = .mstatus;
-        pub usingnamespace Setter(@This());
+        pub usingnamespace Methods(@This());
 
         comptime {
             std.debug.assert(@bitSizeOf(@This()) == 64);
@@ -125,7 +125,7 @@ pub const csr = struct {
         _: u55 = 0,
 
         const tag = .sstatus;
-        pub usingnamespace Setter(@This());
+        pub usingnamespace Methods(@This());
 
         comptime {
             std.debug.assert(@bitSizeOf(@This()) == 64);
@@ -155,7 +155,7 @@ pub const csr = struct {
         _: u52 = 0,
 
         const tag = .mie;
-        pub usingnamespace Setter(@This());
+        pub usingnamespace Methods(@This());
 
         comptime {
             std.debug.assert(@bitSizeOf(@This()) == 64);
@@ -176,7 +176,7 @@ pub const csr = struct {
         _: u54 = 0,
 
         const tag = .sie;
-        pub usingnamespace Setter(@This());
+        pub usingnamespace Methods(@This());
 
         comptime {
             std.debug.assert(@bitSizeOf(@This()) == 64);
@@ -214,13 +214,20 @@ pub const csr = struct {
         );
     }
 
-    fn Setter(comptime T: type) type {
+    fn Methods(comptime T: type) type {
+        const register = @field(T, "tag");
+
         return struct {
-            pub fn set(self: T) void {
-                csr.set(@field(T, "tag"), @bitCast(usize, self));
+            pub fn read() T {
+                return @bitCast(T, csr.read(register));
             }
+
+            pub fn set(self: T) void {
+                csr.set(register, @bitCast(usize, self));
+            }
+
             pub fn reset(self: T) void {
-                csr.clear(@field(T, "tag"), @bitCast(usize, self));
+                csr.clear(register, @bitCast(usize, self));
             }
         };
     }

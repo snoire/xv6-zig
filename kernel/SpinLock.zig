@@ -99,8 +99,7 @@ fn intrOn() void {
 
 // are device interrupts enabled?
 fn intrGet() bool {
-    const sstatus = @bitCast(csr.sstatus, csr.read(.sstatus));
-    return sstatus.sie;
+    return csr.sstatus.read().sie;
 }
 
 extern fn mycpu() *Cpu;
