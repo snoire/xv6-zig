@@ -70,10 +70,10 @@ export fn printf(format: [*:0]const u8, ...) void {
     }
 }
 
-fn panic(msg: []const u8, _: ?*std.builtin.StackTrace, return_addr: ?usize) noreturn {
+pub fn panic(msg: []const u8, _: ?*std.builtin.StackTrace, return_addr: ?usize) noreturn {
     @setCold(true);
     pr.locking = false;
-    print("PANIC: {s}!\n", .{msg});
+    print("\x1b[31m" ++ "KERNEL PANIC: {s}!\n" ++ "\x1b[m", .{msg});
 
     const first_ret_addr = return_addr orelse @returnAddress();
     var it = std.debug.StackIterator.init(first_ret_addr, null);

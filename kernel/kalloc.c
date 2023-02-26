@@ -39,6 +39,7 @@ freerange(void *pa_start, void *pa_end)
     kfree(p);
 }
 
+#if 0
 // Free the page of physical memory pointed at by pa,
 // which normally should have been returned by a
 // call to kalloc().  (The exception is when
@@ -62,7 +63,6 @@ kfree(void *pa)
   release(&kmem.lock);
 }
 
-#if 0
 // Allocate one 4096-byte page of physical memory.
 // Returns a pointer that the kernel can use.
 // Returns 0 if the memory cannot be allocated.

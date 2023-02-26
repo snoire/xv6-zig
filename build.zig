@@ -197,7 +197,6 @@ pub fn build(b: *std.Build) void {
 
     var run_tls = b.step("run", "Run xv6 in QEMU");
     var run = b.addSystemCommand(&.{qemu_cmd});
-    run.condition = .always;
     run.addArgs(&qemu_args);
 
     run.step.dependOn(&install_kernel.step);
@@ -207,7 +206,6 @@ pub fn build(b: *std.Build) void {
     // run qemu with gdb server
     var qemu_tls = b.step("qemu", "Run xv6 in QEMU with gdb server");
     var qemu = b.addSystemCommand(&.{qemu_cmd});
-    qemu.condition = .always;
     qemu.addArgs(&qemu_args);
     qemu.addArgs(&.{ "-gdb", "tcp::26002", "-S" });
 
@@ -225,7 +223,6 @@ pub fn build(b: *std.Build) void {
         "gdbinit",
     });
 
-    gdb.condition = .always;
     gdb.step.dependOn(&kernel.step);
     gdb_tls.dependOn(&gdb.step);
 
