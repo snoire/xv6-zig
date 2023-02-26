@@ -14,7 +14,6 @@ pub fn main() callconv(.C) void {
     const id = c.cpuid();
     if (id == 0) {
         c.consoleinit();
-        kernel.print.init();
 
         print(
             \\
@@ -23,7 +22,7 @@ pub fn main() callconv(.C) void {
             \\
         , .{});
 
-        c.kinit(); // physical page allocator
+        kernel.kalloc.init(); // physical page allocator
         c.kvminit(); // create kernel page table
         c.kvminithart(); // turn on paging
         c.procinit(); // process table

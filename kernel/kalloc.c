@@ -39,7 +39,6 @@ freerange(void *pa_start, void *pa_end)
     kfree(p);
 }
 
-#if 0
 // Free the page of physical memory pointed at by pa,
 // which normally should have been returned by a
 // call to kalloc().  (The exception is when
@@ -81,4 +80,3 @@ kalloc(void)
     memset((char*)r, 5, PGSIZE); // fill with junk
   return (void*)r;
 }
-#endif

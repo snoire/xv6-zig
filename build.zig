@@ -51,7 +51,7 @@ const kfiles = .{
     "trampoline.S",
     "kernelvec.S",
 
-    "kalloc.c",
+    // "kalloc.c",
     "string.c",
     "vm.c",
     "proc.c",

@@ -5,6 +5,7 @@ pub const SleepLock = @import("SleepLock.zig");
 pub const SpinLock = @import("SpinLock.zig");
 pub const syscall = @import("syscall.zig");
 pub const print = @import("print.zig");
+pub const kalloc = @import("kalloc.zig");
 
 /// maximum number of processes
 pub const NPROC = 64;

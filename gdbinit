@@ -6,4 +6,5 @@ set disassemble-next-line auto
 set riscv use-compressed-breakpoints yes
 
 layout split
-b kfree
+# @panic
+b print.panic

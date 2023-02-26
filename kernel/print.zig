@@ -1,7 +1,4 @@
 const std = @import("std");
-const kernel = @import("xv6.zig");
-const c = @import("c.zig");
-// const SpinLock = c.SpinLock;
 const SpinLock = @import("SpinLock.zig");
 
 extern fn consputc(char: u8) void;
@@ -12,15 +9,9 @@ extern fn release(lk: *SpinLock) void;
 export var panicked: c_int = 0;
 
 var pr: struct {
-    lock: SpinLock,
-    locking: bool,
-} = undefined;
-
-pub fn init() void {
-    // initlock(&pr.lock, "pr");
-    pr.lock = SpinLock.init("pr");
-    pr.locking = true;
-}
+    lock: SpinLock = SpinLock.init("pr"),
+    locking: bool = true,
+} = .{};
 
 fn write(_: void, string: []const u8) error{}!usize {
     for (string) |char| {
@@ -33,12 +24,10 @@ const Writer = std.io.Writer(void, error{}, write);
 
 pub fn print(comptime format: []const u8, args: anytype) void {
     const locking = pr.locking;
-    // if (locking) acquire(&pr.lock);
     if (locking) pr.lock.acquire();
 
     std.fmt.format(Writer{ .context = {} }, format, args) catch unreachable;
 
-    // if (locking) release(&pr.lock);
     if (locking) pr.lock.release();
 }
 
