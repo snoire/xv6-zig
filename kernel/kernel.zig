@@ -91,4 +91,5 @@ fn timerinit() void {
 // force unused export functions to be compiled
 comptime {
     _ = @import("syscall.zig");
+    _ = @import("kalloc.zig");
 }

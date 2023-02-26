@@ -12,6 +12,8 @@ pub const SpinLock = extern struct {
     /// The cpu holding the lock.
     cpu: *Cpu,
 };
+pub extern fn acquire(lock: *SpinLock) void;
+pub extern fn release(lock: *SpinLock) void;
 
 /// Long-term locks for processes
 pub const SleepLock = extern struct {
