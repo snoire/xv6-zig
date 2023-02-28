@@ -1,5 +1,6 @@
 const std = @import("std");
 const xv6 = @import("kernel/xv6.zig");
+const FileSource = std.build.FileSource;
 
 const target: std.zig.CrossTarget = .{
     .cpu_arch = .riscv64,
@@ -8,10 +9,8 @@ const target: std.zig.CrossTarget = .{
 };
 
 var optimize: std.builtin.Mode = undefined;
-var strip: bool = false;
-
 var apps_step: *std.build.Step = undefined;
-var kernel_lib: *std.Build.Module = undefined;
+var strip: ?bool = false;
 
 const Lang = enum {
     c,
@@ -79,12 +78,15 @@ const kfiles = .{
 
 pub fn build(b: *std.Build) void {
     optimize = b.standardOptimizeOption(.{});
-    strip = b.option(bool, "strip", "Removes symbols and sections from file") orelse false;
+    strip = b.option(bool, "strip", "Removes symbols and sections from file");
     const cpus = blk: {
-        const option = b.option([]const u8, "CPUS", "Number of CPUS") orelse "3";
+        const description = b.fmt("Number of CPUS (1-{})", .{xv6.NCPU});
+        const option = b.option([]const u8, "CPUS", description) orelse "3";
+
         const message = b.fmt("CPUS must be in the range of [1-{}].", .{xv6.NCPU});
         const number = std.fmt.parseInt(u4, option, 0) catch @panic(message);
         if (number > xv6.NCPU or number == 0) @panic(message);
+
         break :blk option;
     };
 
@@ -95,41 +97,27 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
+
     kernel.addIncludePath("kernel/");
+    kernel.setLinkerScriptPath(.{ .path = "kernel/kernel.ld" });
 
     inline for (kfiles) |f| {
         const path = "kernel/" ++ f;
         kernel.addObjectFile(path);
     }
 
-    kernel.setLinkerScriptPath(.{ .path = "kernel/kernel.ld" });
-
-    kernel.code_model = .medium;
     kernel.strip = strip;
-
+    kernel.code_model = .medium;
     kernel.omit_frame_pointer = false;
     kernel.disable_sanitize_c = true; // TODO: fix it
 
     kernel.override_dest_dir = .{ .custom = "./" };
+
     const install_kernel = b.addInstallArtifact(kernel);
     b.getInstallStep().dependOn(&install_kernel.step);
 
     const kernel_tls = b.step("kernel", "Build kernel");
-    kernel_tls.dependOn(&kernel.step);
-
-    // kernel lib
-    kernel_lib = b.createModule(.{ .source_file = std.build.FileSource.relative("kernel/xv6.zig") });
-
-    // build user applications
-    apps_step = b.step("apps", "Compiles apps");
-
-    inline for (capps) |app| {
-        buildApp(b, app, .c);
-    }
-
-    inline for (zapps) |app| {
-        buildApp(b, app, .zig);
-    }
+    kernel_tls.dependOn(&install_kernel.step);
 
     // build mkfs
     const mkfs = b.addExecutable(.{
@@ -137,17 +125,39 @@ pub fn build(b: *std.Build) void {
         .root_source_file = .{ .path = "mkfs/mkfs.zig" },
         .optimize = optimize,
     });
-    mkfs.addIncludePath("./");
-    mkfs.addModule("kernel", kernel_lib);
 
+    mkfs.addIncludePath("./");
+    mkfs.addAnonymousModule("kernel", .{
+        .source_file = std.build.FileSource.relative("kernel/xv6.zig"),
+    });
+
+    mkfs.strip = strip;
     mkfs.single_threaded = true;
     mkfs.override_dest_dir = .{ .custom = "./" };
 
     const mkfs_tls = b.step("mkfs", "Build mkfs");
     mkfs_tls.dependOn(&b.addInstallArtifact(mkfs).step);
 
+    // build user applications
+    apps_step = b.step("apps", "Compiles apps");
+
+    var all_apps: [capps.len + zapps.len]FileSource = undefined;
+
+    inline for (capps, 0..) |app, i| {
+        all_apps[i] = buildApp(b, app, .c);
+    }
+    inline for (zapps, capps.len..) |app, i| {
+        all_apps[i] = buildApp(b, app, .zig);
+    }
+
     // build fs.img
     const fs = mkfs.run();
+    const fs_img = fs.addOutputFileArg("fs.img");
+    fs.addArg("README.md");
+
+    for (all_apps) |app| {
+        fs.addFileSourceArg(app);
+    }
 
     // fs.img will be regenerated when these files are modified.
     fs.extra_file_dependencies = comptime blk: {
@@ -164,18 +174,12 @@ pub fn build(b: *std.Build) void {
         break :blk &(cfiles ++ zfiles);
     };
 
-    fs.addArg(b.pathJoin(&.{ b.install_prefix, "fs.img" }));
-    fs.addArg("README.md");
-
-    inline for (capps ++ zapps) |app| {
-        fs.addArg(b.pathJoin(&.{ b.install_prefix, "apps", app }));
-    }
-
-    fs.step.dependOn(apps_step);
-    b.getInstallStep().dependOn(&fs.step);
+    const install_fs_img = b.addInstallFile(fs_img, "fs.img");
+    install_fs_img.step.dependOn(&fs.step);
+    b.getInstallStep().dependOn(&install_fs_img.step);
 
     const fs_tls = b.step("fs", "Build fs.img");
-    fs_tls.dependOn(&fs.step);
+    fs_tls.dependOn(&install_fs_img.step);
 
     // run xv6 in qemu
     const kernel_path = b.pathJoin(&.{ b.install_prefix, "kernel" });
@@ -195,26 +199,27 @@ pub fn build(b: *std.Build) void {
         // TODO: netdev?
     }; // zig fmt: on
 
-    var run_tls = b.step("run", "Run xv6 in QEMU");
-    var run = b.addSystemCommand(&.{qemu_cmd});
+    const run_tls = b.step("run", "Run xv6 in QEMU");
+    const run = b.addSystemCommand(&.{qemu_cmd});
     run.addArgs(&qemu_args);
 
     run.step.dependOn(&install_kernel.step);
-    run.step.dependOn(&fs.step);
+    run.step.dependOn(&install_fs_img.step);
     run_tls.dependOn(&run.step);
 
     // run qemu with gdb server
-    var qemu_tls = b.step("qemu", "Run xv6 in QEMU with gdb server");
-    var qemu = b.addSystemCommand(&.{qemu_cmd});
+    const qemu_tls = b.step("qemu", "Run xv6 in QEMU with gdb server");
+    const qemu = b.addSystemCommand(&.{qemu_cmd});
     qemu.addArgs(&qemu_args);
     qemu.addArgs(&.{ "-gdb", "tcp::26002", "-S" });
 
     qemu.step.dependOn(&install_kernel.step);
+    qemu.step.dependOn(&install_fs_img.step);
     qemu_tls.dependOn(&qemu.step);
 
     // debug with gdb
-    var gdb_tls = b.step("gdb", "Debug with gdb");
-    var gdb = b.addSystemCommand(&.{
+    const gdb_tls = b.step("gdb", "Debug with gdb");
+    const gdb = b.addSystemCommand(&.{
         "riscv64-unknown-elf-gdb",
         kernel_path,
         "-q",
@@ -223,12 +228,12 @@ pub fn build(b: *std.Build) void {
         "gdbinit",
     });
 
-    gdb.step.dependOn(&kernel.step);
+    gdb.step.dependOn(&install_kernel.step);
     gdb_tls.dependOn(&gdb.step);
 
     // display code information
-    var objdump_tls = b.step("code", "Display code information");
-    var objdump = b.addSystemCommand(&.{
+    const objdump_tls = b.step("code", "Display code information");
+    const objdump = b.addSystemCommand(&.{
         "riscv64-unknown-elf-objdump",
         "-SD",
         kernel_path,
@@ -238,7 +243,7 @@ pub fn build(b: *std.Build) void {
     objdump_tls.dependOn(&objdump.step);
 }
 
-fn buildApp(b: *std.Build, comptime appName: []const u8, comptime lang: Lang) void {
+fn buildApp(b: *std.Build, comptime appName: []const u8, comptime lang: Lang) FileSource {
     const app = b.addExecutable(.{
         .name = appName,
         .root_source_file = if (lang == .zig) .{ .path = "user/" ++ appName ++ ".zig" } else null,
@@ -260,11 +265,13 @@ fn buildApp(b: *std.Build, comptime appName: []const u8, comptime lang: Lang) vo
         app.addCSourceFile("user/umalloc.c", &.{});
     }
 
+    app.strip = strip;
     app.code_model = .medium;
-
-    app.setLinkerScriptPath(.{ .path = "user/app.ld" });
     app.omit_frame_pointer = false;
+    app.setLinkerScriptPath(.{ .path = "user/app.ld" });
 
     app.override_dest_dir = .{ .custom = "apps/" };
     apps_step.dependOn(&b.addInstallArtifact(app).step);
+
+    return app.getOutputSource();
 }
