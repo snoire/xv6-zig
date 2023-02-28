@@ -2,9 +2,6 @@ const std = @import("std");
 const SpinLock = @import("SpinLock.zig");
 
 extern fn consputc(char: u8) void;
-extern fn initlock(lk: *SpinLock, name: [*:0]const u8) void;
-extern fn acquire(lk: *SpinLock) void;
-extern fn release(lk: *SpinLock) void;
 
 export var panicked: c_int = 0;
 

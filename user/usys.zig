@@ -28,7 +28,7 @@ const syscall = enum(u8) {
 
 comptime {
     const info = @typeInfo(syscall).Enum;
-    inline for (info.fields) |call| {
+    for (info.fields) |call| {
         asm (entry(call));
     }
 }
