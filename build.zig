@@ -241,6 +241,21 @@ pub fn build(b: *std.Build) void {
 
     objdump.step.dependOn(&install_kernel.step);
     objdump_tls.dependOn(&objdump.step);
+
+    // translates addresses of stack trace
+    const addr2line_tls = b.step("addr2line", "Translates addresses of stack trace");
+    const addr2line = b.addSystemCommand(&.{
+        "addr2line",
+        "-e",
+        kernel_path,
+    });
+
+    if (b.args) |args| {
+        addr2line.addArgs(args);
+    }
+
+    addr2line.step.dependOn(&install_kernel.step);
+    addr2line_tls.dependOn(&addr2line.step);
 }
 
 fn buildApp(b: *std.Build, comptime appName: []const u8, comptime lang: Lang) FileSource {
