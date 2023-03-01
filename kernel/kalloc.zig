@@ -35,7 +35,7 @@ pub fn init() void {
 /// Allocate one 4096-byte page of physical memory.
 /// Returns a pointer that the kernel can use.
 /// Returns null if the memory cannot be allocated.
-export fn kalloc() ?Page {
+pub export fn kalloc() ?Page {
     var page: Page = blk: {
         kmem.lock.acquire();
         defer kmem.lock.release();

@@ -70,6 +70,7 @@ kvminithart()
   sfence_vma();
 }
 
+#if 0
 // Return the address of the PTE in page table pagetable
 // that corresponds to virtual address va.  If alloc!=0,
 // create any required page-table pages.
@@ -101,6 +102,7 @@ walk(pagetable_t pagetable, uint64 va, int alloc)
   }
   return &pagetable[PX(0, va)];
 }
+#endif
 
 // Look up a virtual address, return the physical address,
 // or 0 if not mapped.

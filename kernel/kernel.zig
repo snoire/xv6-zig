@@ -93,4 +93,5 @@ fn timerinit() void {
 comptime {
     _ = @import("syscall.zig");
     _ = @import("kalloc.zig");
+    _ = @import("vm.zig");
 }
