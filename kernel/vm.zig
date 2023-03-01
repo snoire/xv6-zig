@@ -8,6 +8,7 @@ const assert = std.debug.assert;
 // Sv39, to avoid having to sign-extend virtual addresses
 // that have the high bit set.
 const MAXVA = 1 << (9 + 9 + 9 + 12 - 1);
+const PGSIZE = 4096;
 
 const PageTable = *[512]Pte; // 512 PTEs
 
@@ -54,6 +55,9 @@ const Va = packed struct {
     }
 };
 
+/// Return the address of the PTE in page table pagetable
+/// that corresponds to virtual address va.  If alloc!=0,
+/// create any required page-table pages.
 export fn walk(pagetable: PageTable, va: Va, alloc: bool) ?*Pte {
     if (@bitCast(usize, va) >= MAXVA) @panic("walk");
 
@@ -76,4 +80,31 @@ export fn walk(pagetable: PageTable, va: Va, alloc: bool) ?*Pte {
     }
 
     return &pt[va.l0];
+}
+
+/// Create PTEs for virtual addresses starting at va that refer to
+/// physical addresses starting at pa. va and size might not
+/// be page-aligned. Returns 0 on success, -1 if walk() couldn't
+/// allocate a needed page-table page.
+export fn mappages(pagetable: PageTable, va: usize, size: usize, pa: usize, perm: usize) c_int {
+    if (size == 0) @panic("mappages: size");
+
+    var paddr = pa;
+    var addr = std.mem.alignBackward(va, PGSIZE);
+    const last = std.mem.alignBackward(va + size - 1, PGSIZE);
+
+    while (true) {
+        var pte = walk(pagetable, @bitCast(Va, addr), true).?;
+        if (pte.valid) @panic("mappages: remap");
+
+        @ptrCast(*usize, pte).* = perm;
+        pte.ppn = @intCast(u44, paddr) >> 12;
+        pte.valid = true;
+
+        if (addr == last) break;
+        addr += PGSIZE;
+        paddr += PGSIZE;
+    }
+
+    return 0;
 }
