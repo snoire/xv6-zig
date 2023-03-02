@@ -77,8 +77,20 @@ pub const csr = struct {
         pmpcfg0,
     };
 
+    // All the following packed structs must be 64bit.
+    comptime {
+        for (std.meta.fields(Register)) |field| {
+            if (@hasDecl(csr, field.name)) {
+                std.debug.assert(@bitSizeOf(@field(csr, field.name)) == 64);
+            }
+        }
+    }
+
     /// Machine Status Register
     pub const mstatus = packed struct {
+        const tag = .mstatus;
+        pub usingnamespace Methods(@This());
+
         @"0": u1 = 0,
         sie: bool = false,
 
@@ -101,17 +113,13 @@ pub const csr = struct {
             hypervisor = 0b10,
             machine = 0b11,
         };
-
-        const tag = .mstatus;
-        pub usingnamespace Methods(@This());
-
-        comptime {
-            std.debug.assert(@bitSizeOf(@This()) == 64);
-        }
     };
 
     /// Supervisor Status Register
     pub const sstatus = packed struct {
+        const tag = .sstatus;
+        pub usingnamespace Methods(@This());
+
         @"0": u1 = 0,
         sie: bool = false,
 
@@ -123,17 +131,13 @@ pub const csr = struct {
         spp: bool = false,
 
         _: u55 = 0,
-
-        const tag = .sstatus;
-        pub usingnamespace Methods(@This());
-
-        comptime {
-            std.debug.assert(@bitSizeOf(@This()) == 64);
-        }
     };
 
     /// Machine-mode Interrupt Enable
     pub const mie = packed struct {
+        const tag = .mie;
+        pub usingnamespace Methods(@This());
+
         @"0": u1 = 0,
         ssie: bool = false,
 
@@ -153,17 +157,13 @@ pub const csr = struct {
         meie: bool = false,
 
         _: u52 = 0,
-
-        const tag = .mie;
-        pub usingnamespace Methods(@This());
-
-        comptime {
-            std.debug.assert(@bitSizeOf(@This()) == 64);
-        }
     };
 
     /// Supervisor Interrupt Enable
     pub const sie = packed struct {
+        const tag = .sie;
+        pub usingnamespace Methods(@This());
+
         @"0": u1 = 0,
         ssie: bool = false,
 
@@ -174,13 +174,24 @@ pub const csr = struct {
         seie: bool = false,
 
         _: u54 = 0,
+    };
 
-        const tag = .sie;
+    /// Supervisor Address Translation and Protection Register
+    pub const satp = packed struct {
+        const tag = .satp;
         pub usingnamespace Methods(@This());
 
-        comptime {
-            std.debug.assert(@bitSizeOf(@This()) == 64);
-        }
+        /// Physical Page Number
+        ppn: u44 = 0,
+
+        /// Address Space Identifier (optional)
+        asid: u16 = 0,
+
+        mode: enum(u4) {
+            none = 0,
+            sv39 = 8,
+            sv48 = 9,
+        } = .none,
     };
 
     pub inline fn read(comptime register: Register) usize {

@@ -6,6 +6,7 @@ pub const SpinLock = @import("SpinLock.zig");
 pub const syscall = @import("syscall.zig");
 pub const print = @import("print.zig");
 pub const kalloc = @import("kalloc.zig");
+pub const vm = @import("vm.zig");
 
 /// maximum number of processes
 pub const NPROC = 64;
@@ -60,6 +61,8 @@ pub const UART0_IRQ = 10;
 // virtio mmio interface
 pub const VIRTIO0 = 0x1000_1000;
 pub const VIRTIO0_IRQ = 1;
+
+pub const PLIC = 0x0c00_0000;
 
 /// core local interruptor (CLINT), which contains the timer.
 pub const clint = struct {

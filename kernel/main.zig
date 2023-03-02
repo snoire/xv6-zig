@@ -23,8 +23,8 @@ pub fn main() callconv(.C) void {
         , .{});
 
         kernel.kalloc.init(); // physical page allocator
-        c.kvminit(); // create kernel page table
-        c.kvminithart(); // turn on paging
+        kernel.vm.init(); // create kernel page table
+        kernel.vm.inithart(); // turn on paging
         c.procinit(); // process table
         c.trapinit(); // trap vectors
         c.trapinithart(); // install kernel trap vector
@@ -41,7 +41,7 @@ pub fn main() callconv(.C) void {
         while (!started.load(.Acquire)) {}
 
         print("hart {} starting\n", .{id});
-        c.kvminithart(); // turn on paging
+        kernel.vm.inithart(); // turn on paging
         c.trapinithart(); // install kernel trap vector
         c.plicinithart(); // ask PLIC for device interrupts
     }

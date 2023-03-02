@@ -8,8 +8,8 @@ const SpinLock = @import("SpinLock.zig");
 const Page = *align(PGSIZE) [PGSIZE]u8;
 
 const PGSIZE = 4096;
-const KERNBASE = 0x80000000;
-const PHYSTOP = KERNBASE + 128 * 1024 * 1024;
+pub const KERNBASE = 0x80000000;
+pub const PHYSTOP = KERNBASE + 128 * 1024 * 1024;
 
 /// first address after kernel.
 /// defined by kernel.ld.

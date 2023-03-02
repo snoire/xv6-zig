@@ -40,7 +40,7 @@ export fn start() callconv(.C) void {
     csr.write(.mepc, @ptrToInt(&main));
 
     // disable paging for now.
-    csr.write(.satp, 0);
+    csr.satp.set(.{ .mode = .none });
 
     // delegate all interrupts and exceptions to supervisor mode.
     csr.write(.medeleg, 0xffff);

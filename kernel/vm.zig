@@ -1,7 +1,8 @@
 const std = @import("std");
+const xv6 = @import("xv6.zig");
+const csr = xv6.register.csr;
 const kalloc = @import("kalloc.zig");
 const assert = std.debug.assert;
-// extern var kernel_pagetable
 
 // one beyond the highest possible virtual address.
 // MAXVA is actually one bit less than the max allowed by
@@ -9,8 +10,16 @@ const assert = std.debug.assert;
 // that have the high bit set.
 const MAXVA = 1 << (9 + 9 + 9 + 12 - 1);
 const PGSIZE = 4096;
+const TRAMPOLINE = MAXVA - PGSIZE;
 
 const PageTable = *[512]Pte; // 512 PTEs
+
+/// the kernel's page table.
+var kernel_pagetable: PageTable = undefined;
+/// kernel.ld sets this to end of kernel code.
+extern const etext: u1;
+/// trampoline.S
+extern const trampoline: u1;
 
 /// page-table entry
 const Pte = packed struct {
@@ -55,6 +64,59 @@ const Va = packed struct {
     }
 };
 
+/// Allocate a page for each process's kernel stack.
+/// Map it high in memory, followed by an invalid
+/// guard page.
+extern fn proc_mapstacks(pagetable: PageTable) void;
+
+pub fn init() void {
+    // Make a direct-map page table for the kernel.
+    var page = kalloc.kalloc().?;
+    std.mem.set(u8, page, 0);
+    kernel_pagetable = @ptrCast(PageTable, page);
+    const ETEXT = @ptrToInt(&etext);
+
+    // uart registers
+    kvmmap(kernel_pagetable, xv6.UART0, xv6.UART0, PGSIZE, .{ .readable = true, .writable = true });
+
+    // virtio mmio disk interface
+    kvmmap(kernel_pagetable, xv6.VIRTIO0, xv6.VIRTIO0, PGSIZE, .{ .readable = true, .writable = true });
+
+    // PLIC
+    kvmmap(kernel_pagetable, xv6.PLIC, xv6.PLIC, 0x400000, .{ .readable = true, .writable = true });
+
+    // map kernel text executable and read-only.
+    kvmmap(kernel_pagetable, kalloc.KERNBASE, kalloc.KERNBASE, ETEXT - kalloc.KERNBASE, .{ .readable = true, .executable = true });
+
+    // map kernel data and the physical RAM we'll make use of.
+    kvmmap(kernel_pagetable, ETEXT, ETEXT, kalloc.PHYSTOP - ETEXT, .{ .readable = true, .writable = true });
+
+    // map the trampoline for trap entry/exit to
+    // the highest virtual address in the kernel.
+    kvmmap(kernel_pagetable, TRAMPOLINE, @ptrToInt(&trampoline), PGSIZE, .{ .readable = true, .executable = true });
+
+    // allocate and map a kernel stack for each process.
+    proc_mapstacks(kernel_pagetable);
+}
+
+// flush the TLB.
+inline fn sfence_vma() void {
+    // the zero, zero means flush all TLB entries.
+    asm volatile ("sfence.vma zero, zero");
+}
+
+/// Switch h/w page table register to the kernel's page table,
+/// and enable paging.
+pub fn inithart() void {
+    // wait for any previous writes to the page table memory to finish.
+    sfence_vma();
+
+    csr.satp.set(.{ .mode = .sv39, .ppn = @intCast(u44, @ptrToInt(kernel_pagetable)) >> 12 });
+
+    // flush stale entries from the TLB.
+    sfence_vma();
+}
+
 /// Return the address of the PTE in page table pagetable
 /// that corresponds to virtual address va.  If alloc!=0,
 /// create any required page-table pages.
@@ -80,6 +142,18 @@ export fn walk(pagetable: PageTable, va: Va, alloc: bool) ?*Pte {
     }
 
     return &pt[va.l0];
+}
+
+/// Look up a virtual address, return the physical address,
+/// or 0 if not mapped.
+/// Can only be used to look up user pages.
+export fn walkaddr(pagetable: PageTable, va: Va) usize {
+    if (@bitCast(usize, va) >= MAXVA) @panic("walk");
+
+    var pte = walk(pagetable, va, false) orelse return 0;
+    if (!pte.valid or !pte.user) return 0;
+
+    return @ptrToInt(pte.toPageTable());
 }
 
 /// Create PTEs for virtual addresses starting at va that refer to
@@ -112,6 +186,6 @@ export fn mappages(pagetable: PageTable, va: usize, size: usize, pa: usize, perm
 /// add a mapping to the kernel page table.
 /// only used when booting.
 /// does not flush TLB or enable paging.
-export fn kvmmap(pagetable: PageTable, va: usize, pa: usize, size: usize, perm: usize) void {
-    if (mappages(pagetable, va, size, pa, perm) != 0) @panic("kvmmap");
+export fn kvmmap(pagetable: PageTable, va: usize, pa: usize, size: usize, perm: Pte) void {
+    if (mappages(pagetable, va, size, pa, @bitCast(usize, perm)) != 0) @panic("kvmmap");
 }
