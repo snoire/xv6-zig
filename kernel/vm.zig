@@ -108,3 +108,10 @@ export fn mappages(pagetable: PageTable, va: usize, size: usize, pa: usize, perm
 
     return 0;
 }
+
+/// add a mapping to the kernel page table.
+/// only used when booting.
+/// does not flush TLB or enable paging.
+export fn kvmmap(pagetable: PageTable, va: usize, pa: usize, size: usize, perm: usize) void {
+    if (mappages(pagetable, va, size, pa, perm) != 0) @panic("kvmmap");
+}
