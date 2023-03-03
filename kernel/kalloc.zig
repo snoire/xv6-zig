@@ -5,7 +5,7 @@
 const std = @import("std");
 const c = @import("c.zig");
 const SpinLock = @import("SpinLock.zig");
-const Page = *align(PGSIZE) [PGSIZE]u8;
+pub const Page = *align(PGSIZE) [PGSIZE]u8;
 
 const PGSIZE = 4096;
 pub const KERNBASE = 0x80000000;
@@ -48,8 +48,8 @@ pub export fn kalloc() ?Page {
         }
     };
 
-    // fill with junk
-    std.mem.set(u8, page, 5);
+    // clear the page
+    std.mem.set(u8, page, 0);
     return page;
 }
 
