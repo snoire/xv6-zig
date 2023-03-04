@@ -12,11 +12,6 @@ var optimize: std.builtin.Mode = undefined;
 var apps_step: *std.build.Step = undefined;
 var strip: ?bool = false;
 
-const Lang = enum {
-    c,
-    zig,
-};
-
 const capps = .{
     "cat",
     "echo",
@@ -128,7 +123,7 @@ pub fn build(b: *std.Build) void {
 
     mkfs.addIncludePath("./");
     mkfs.addAnonymousModule("kernel", .{
-        .source_file = std.build.FileSource.relative("kernel/xv6.zig"),
+        .source_file = FileSource.relative("kernel/xv6.zig"),
     });
 
     mkfs.strip = strip;
@@ -151,16 +146,17 @@ pub fn build(b: *std.Build) void {
     }
 
     // build fs.img
-    const fs = mkfs.run();
-    const fs_img = fs.addOutputFileArg("fs.img");
-    fs.addArg("README.md");
+    // run mkfs to build the initial file system
+    const run_mkfs = mkfs.run();
+    const fs_img = run_mkfs.addOutputFileArg("fs.img");
+    run_mkfs.addArg("README.md");
 
     for (all_apps) |app| {
-        fs.addFileSourceArg(app);
+        run_mkfs.addFileSourceArg(app);
     }
 
     // fs.img will be regenerated when these files are modified.
-    fs.extra_file_dependencies = comptime blk: {
+    run_mkfs.extra_file_dependencies = comptime blk: {
         var cfiles: [capps.len][]const u8 = undefined;
         for (capps, 0..) |name, i| {
             cfiles[i] = "user/" ++ name ++ ".c";
@@ -175,7 +171,7 @@ pub fn build(b: *std.Build) void {
     };
 
     const install_fs_img = b.addInstallFile(fs_img, "fs.img");
-    install_fs_img.step.dependOn(&fs.step);
+    install_fs_img.step.dependOn(&run_mkfs.step);
     b.getInstallStep().dependOn(&install_fs_img.step);
 
     const fs_tls = b.step("fs", "Build fs.img");
@@ -258,10 +254,13 @@ pub fn build(b: *std.Build) void {
     addr2line_tls.dependOn(&addr2line.step);
 }
 
-fn buildApp(b: *std.Build, comptime appName: []const u8, comptime lang: Lang) FileSource {
+fn buildApp(b: *std.Build, comptime appName: []const u8, comptime lang: enum { c, zig }) FileSource {
     const app = b.addExecutable(.{
         .name = appName,
-        .root_source_file = if (lang == .zig) .{ .path = "user/" ++ appName ++ ".zig" } else null,
+        .root_source_file = if (lang == .zig)
+            .{ .path = "user/" ++ appName ++ ".zig" }
+        else
+            null,
         .target = target,
         .optimize = optimize,
     });
