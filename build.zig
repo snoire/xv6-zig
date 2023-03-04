@@ -47,7 +47,7 @@ const kfiles = .{
 
     // "kalloc.c",
     "string.c",
-    "vm.c",
+    // "vm.c",
     "proc.c",
     "trap.c",
     // "syscall.c",

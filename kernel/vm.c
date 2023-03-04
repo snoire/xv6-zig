@@ -6,7 +6,6 @@
 #include "defs.h"
 #include "fs.h"
 
-#if 0
 /*
  * the kernel's page table.
  */
@@ -164,7 +163,6 @@ mappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm)
   }
   return 0;
 }
-#endif
 
 // Remove npages of mappings starting from va. va must be
 // page-aligned. The mappings must exist.

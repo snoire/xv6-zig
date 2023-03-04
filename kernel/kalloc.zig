@@ -19,10 +19,8 @@ const Run = extern struct {
     next: ?*align(PGSIZE) Run,
 };
 
-var kmem: struct {
-    lock: SpinLock = SpinLock.init("kmem"),
-    freelist: ?*align(PGSIZE) Run = null,
-} = .{};
+var lock: SpinLock = SpinLock.init("kmem");
+var freelist: ?*align(PGSIZE) Run = null;
 
 pub fn init() void {
     var addr = std.mem.alignForward(@ptrToInt(&end), PGSIZE);
@@ -37,11 +35,11 @@ pub fn init() void {
 /// Returns null if the memory cannot be allocated.
 pub export fn kalloc() ?Page {
     var page: Page = blk: {
-        kmem.lock.acquire();
-        defer kmem.lock.release();
+        lock.acquire();
+        defer lock.release();
 
-        if (kmem.freelist) |r| {
-            kmem.freelist = r.next;
+        if (freelist) |r| {
+            freelist = r.next;
             break :blk @ptrCast(Page, r);
         } else {
             return null;
@@ -57,17 +55,17 @@ pub export fn kalloc() ?Page {
 /// which normally should have been returned by a
 /// call to kalloc().  (The exception is when
 /// initializing the allocator; see kinit above.)
-export fn kfree(page: Page) void {
+pub export fn kfree(page: Page) void {
     const addr = @ptrToInt(page);
     if (addr < @ptrToInt(&end) or addr >= PHYSTOP) @panic("kfree");
 
     // Fill with junk to catch dangling refs.
     std.mem.set(u8, page, 1);
 
-    kmem.lock.acquire();
-    defer kmem.lock.release();
+    lock.acquire();
+    defer lock.release();
 
     var r = @ptrCast(*align(PGSIZE) Run, page);
-    r.next = kmem.freelist;
-    kmem.freelist = r;
+    r.next = freelist;
+    freelist = r;
 }

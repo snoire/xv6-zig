@@ -22,6 +22,7 @@ var kernel_pagetable: Address = undefined;
 
 const Address = packed union {
     interger: usize,
+    buffer: [*]u8,
     vaddr: VirtualAddr,
     paddr: PhysicalAddr,
     page: kalloc.Page,
@@ -56,6 +57,26 @@ const Address = packed union {
 
         _: u8 = 0,
     };
+
+    fn roundUp(self: Address) usize {
+        return std.mem.alignForward(self.interger, PGSIZE);
+    }
+
+    fn roundDown(self: Address) usize {
+        return std.mem.alignBackward(self.interger, PGSIZE);
+    }
+
+    fn add(self: Address, addr: Address) Address {
+        return .{
+            .interger = self.interger + addr.interger,
+        };
+    }
+
+    fn sub(self: Address, addr: Address) Address {
+        return .{
+            .interger = self.interger - addr.interger,
+        };
+    }
 };
 
 /// page-table entry
@@ -191,15 +212,33 @@ export fn walk(pagetable: Address, va: Address, alloc: bool) ?*Pte {
 }
 
 /// Look up a virtual address, return the physical address,
-/// or 0 if not mapped.
+/// or panic if not mapped.
 /// Can only be used to look up user pages.
-export fn walkaddr(pagetable: Address, va: Address) Address {
-    if (va.interger >= MAXVA) @panic("walk");
+fn cwalkaddr(pagetable: Address, va: Address) callconv(.C) Address {
+    if (va.interger >= MAXVA) @panic("walkaddr");
 
-    var pte = walk(pagetable, va, false) orelse return .{ .interger = 0 };
-    if (!pte.flags.valid or !pte.flags.user) return .{ .interger = 0 };
+    var pte = walk(pagetable, va, false).?;
+    if (!pte.flags.valid or !pte.flags.user) @panic("walkaddr");
 
     return pte.getAddr();
+}
+
+comptime {
+    @export(cwalkaddr, .{ .name = "walkaddr", .linkage = .Strong });
+}
+
+fn walkaddr(pagetable: Address, va: Address) Address {
+    if (va.interger >= MAXVA) @panic("walkaddr");
+
+    var pte = walk(pagetable, va, false).?;
+    if (!pte.flags.valid or !pte.flags.user) @panic("walkaddr");
+
+    return Address{
+        .paddr = .{
+            .ppn = pte.ppn,
+            .offset = va.vaddr.offset,
+        },
+    };
 }
 
 /// Create PTEs for virtual addresses starting at va that refer to
@@ -234,4 +273,215 @@ export fn mappages(pagetable: Address, vaddress: usize, size: usize, paddress: u
 /// does not flush TLB or enable paging.
 export fn kvmmap(pagetable: Address, va: usize, pa: usize, size: usize, perm: Pte.Flags) void {
     if (mappages(pagetable, va, size, pa, perm) != 0) @panic("kvmmap");
+}
+
+/// Remove npages of mappings starting from va. va must be
+/// page-aligned. The mappings must exist.
+/// Optionally free the physical memory.
+export fn uvmunmap(pagetable: Address, va: Address, npages: usize, do_free: bool) void {
+    if (!std.mem.isAligned(va.interger, PGSIZE)) @panic("uvmunmap: not aligned");
+
+    var addr = va;
+    while (addr.interger < va.interger + npages * PGSIZE) : (addr.interger += PGSIZE) {
+        var pte = walk(pagetable, addr, false).?;
+        if (!pte.flags.valid) @panic("uvmunmap: not mapped");
+        if (@bitCast(u8, pte.flags) == @bitCast(u8, Pte.Flags{ .valid = true })) {
+            @panic("uvmunmap: not a leaf");
+        }
+        if (do_free) {
+            kalloc.kfree(pte.getAddr().page);
+        }
+        pte.* = .{};
+    }
+}
+
+/// create an empty user page table.
+/// panic if out of memory.
+export fn uvmcreate() Address {
+    return .{ .page = kalloc.kalloc().? };
+}
+
+/// Load the user initcode into address 0 of pagetable,
+/// for the very first process.
+/// sz must be less than a page.
+export fn uvmfirst(pagetable: Address, src: [*]u8, sz: usize) void {
+    if (sz >= PGSIZE) @panic("uvmfirst: more than a page");
+
+    var mem = Address{ .page = kalloc.kalloc().? };
+    var ret = mappages(pagetable, 0, PGSIZE, mem.interger, .{
+        .writable = true,
+        .readable = true,
+        .executable = true,
+        .user = true,
+    });
+    if (ret != 0) @panic("uvmfirst");
+
+    std.mem.copy(u8, mem.page, src[0..sz]);
+}
+
+/// Allocate PTEs and physical memory to grow process from oldsz to
+/// newsz, which need not be page aligned.  Returns new size or panic on error.
+export fn uvmalloc(pagetable: Address, oldsz: usize, newsz: usize, xperm: Pte.Flags) usize {
+    if (newsz < oldsz) return oldsz;
+
+    var flags = xperm;
+    flags.readable = true;
+    flags.user = true;
+
+    var addr = std.mem.alignForward(oldsz, PGSIZE);
+    while (addr < newsz) : (addr += PGSIZE) {
+        var mem = Address{ .page = kalloc.kalloc().? };
+        var ret = mappages(pagetable, addr, PGSIZE, mem.interger, flags);
+        if (ret != 0) @panic("uvmalloc");
+    }
+    return newsz;
+}
+
+/// Deallocate user pages to bring the process size from oldsz to
+/// newsz.  oldsz and newsz need not be page-aligned, nor does newsz
+/// need to be less than oldsz.  oldsz can be larger than the actual
+/// process size.  Returns the new process size.
+export fn uvmdealloc(pagetable: Address, oldsz: usize, newsz: usize) usize {
+    if (newsz < oldsz) return oldsz;
+
+    var old = std.mem.alignForward(oldsz, PGSIZE);
+    var new = std.mem.alignForward(newsz, PGSIZE);
+    if (old < new) {
+        var npages = (old - new) / PGSIZE;
+        uvmunmap(pagetable, .{ .interger = newsz }, npages, true);
+    }
+
+    return newsz;
+}
+
+/// Recursively free page-table pages.
+/// All leaf mappings must already have been removed.
+export fn freewalk(pagetable: Address) void {
+    // there are 2^9 = 512 PTEs in a page table.
+    for (pagetable.pagetable) |*pte| {
+        if (!pte.flags.valid) continue;
+        if (pte.flags.readable or pte.flags.writable or pte.flags.executable) {
+            @panic("freewalk: leaf");
+        }
+
+        var child = pte.getAddr();
+        freewalk(child);
+        pte.* = .{};
+    }
+
+    kalloc.kfree(pagetable.page);
+}
+
+/// Free user memory pages,
+/// then free page-table pages.
+export fn uvmfree(pagetable: Address, sz: usize) void {
+    uvmunmap(pagetable, .{ .interger = 0 }, std.mem.alignForward(sz, PGSIZE) / PGSIZE, true);
+    freewalk(pagetable);
+}
+
+/// Given a parent process's page table, copy
+/// its memory into a child's page table.
+/// Copies both the page table and the
+/// physical memory.
+/// returns 0 on success, or panic on failure.
+/// frees any allocated pages on failure.
+export fn uvmcopy(old_pagetable: Address, new_pagetable: Address, sz: usize) c_int {
+    var i: usize = 0;
+    while (i < sz) : (i += PGSIZE) {
+        var pte = walk(old_pagetable, .{ .interger = i }, false).?;
+        if (!pte.flags.valid) @panic("uvmcopy: page not present");
+
+        var pa = pte.getAddr();
+        var mem = Address{ .page = kalloc.kalloc().? };
+
+        std.mem.copy(u8, mem.page, pa.page);
+        if (mappages(new_pagetable, i, PGSIZE, mem.interger, pte.flags) != 0) {
+            @panic("mappages");
+        }
+    }
+
+    return 0;
+}
+
+/// mark a PTE invalid for user access.
+/// used by exec for the user stack guard page.
+export fn uvmclear(pagetable: Address, va: Address) void {
+    var pte = walk(pagetable, va, false).?;
+    pte.flags.user = false;
+}
+
+/// Copy from kernel to user.
+/// Copy len bytes from src to virtual address dstva in a given page table.
+/// Return 0 on success, -1 on error.
+export fn copyout(pagetable: Address, dstva: Address, source: [*]const u8, length: usize) c_int {
+    var n: usize = 0;
+    var dst = dstva;
+
+    while (n < length) {
+        var pa = walkaddr(pagetable, dst);
+        var nbytes = @min(PGSIZE - (dst.interger - dst.roundDown()), length - n);
+        std.mem.copy(u8, pa.buffer[0..nbytes], source[n .. n + nbytes]);
+
+        n += nbytes;
+        dst.interger = dst.roundDown() + PGSIZE;
+    }
+
+    return 0;
+}
+
+/// Copy from user to kernel.
+/// Copy len bytes to dst from virtual address srcva in a given page table.
+/// Return 0 on success, -1 on error.
+export fn copyin(pagetable: Address, dst: [*]u8, srcva: Address, length: usize) c_int {
+    var n: usize = 0;
+    var src = srcva;
+
+    while (n < length) {
+        var pa = walkaddr(pagetable, src);
+        var nbytes = @min(PGSIZE - (src.interger - src.roundDown()), length - n);
+        std.mem.copy(u8, dst[n .. n + nbytes], pa.buffer[0..nbytes]);
+
+        n += nbytes;
+        src.interger = src.roundDown() + PGSIZE;
+    }
+
+    return 0;
+}
+
+/// Copy a null-terminated string from user to kernel.
+/// Copy bytes to dst from virtual address srcva in a given page table,
+/// until a '\0', or max.
+/// Return 0 on success, -1 on error.
+export fn copyinstr(pagetable: Address, dst: [*]u8, srcva: Address, max: usize) c_int {
+    var n: usize = 0;
+    var src = srcva;
+    var got_null: bool = false;
+
+    while (n < max) {
+        var pa = walkaddr(pagetable, src);
+        var nbytes = @min(PGSIZE - (src.interger - src.roundDown()), max - n);
+        const data = pa.buffer[0..nbytes];
+
+        nbytes = blk: {
+            const index_of_zero = std.mem.indexOfScalar(u8, data, 0);
+            if (index_of_zero) |i| {
+                got_null = true;
+                break :blk i + 1;
+            } else {
+                break :blk data.len;
+            }
+        };
+
+        std.mem.copy(u8, dst[n .. n + nbytes], data[0..nbytes]);
+        if (got_null) break;
+
+        n += nbytes;
+        src.interger = src.roundDown() + PGSIZE;
+    }
+
+    if (got_null) {
+        return 0;
+    } else {
+        return -1;
+    }
 }
