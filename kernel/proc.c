@@ -58,6 +58,7 @@ procinit(void)
   }
 }
 
+#if 0
 // Must be called with interrupts disabled,
 // to prevent race with process being moved
 // to a different CPU.
@@ -101,6 +102,7 @@ allocpid()
 
   return pid;
 }
+#endif
 
 // Look in the process table for an UNUSED proc.
 // If found, initialize state required to run in the kernel,

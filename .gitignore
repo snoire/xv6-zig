@@ -18,3 +18,10 @@ zig-cache/
 zig-out/
 .cache/
 compile_commands.json
+
+kernel/start.c
+kernel/main.c
+kernel/printf.c
+kernel/syscall.c
+kernel/kalloc.c
+kernel/vm.c

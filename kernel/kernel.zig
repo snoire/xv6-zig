@@ -94,4 +94,5 @@ comptime {
     _ = @import("syscall.zig");
     _ = @import("kalloc.zig");
     _ = @import("vm.zig");
+    _ = @import("proc.zig");
 }

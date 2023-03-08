@@ -69,7 +69,7 @@ pub fn release(self: *Self) void {
 /// push_off/pop_off are like intr_off()/intr_on() except that they are matched:
 /// it takes two pop_off()s to undo two push_off()s.  Also, if interrupts
 /// are initially off, then push_off, pop_off leaves them off.
-fn pushOff() void {
+pub fn pushOff() void {
     intrOff();
 
     var cpu: *Cpu = mycpu();
@@ -77,7 +77,7 @@ fn pushOff() void {
     cpu.noff += 1;
 }
 
-fn popOff() void {
+pub fn popOff() void {
     var cpu: *Cpu = mycpu();
 
     if (intrGet()) @panic("pop_off - interruptible");

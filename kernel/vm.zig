@@ -3,14 +3,15 @@ const xv6 = @import("xv6.zig");
 const csr = xv6.register.csr;
 const kalloc = @import("kalloc.zig");
 const assert = std.debug.assert;
+const proc = @import("proc.zig");
 
 // one beyond the highest possible virtual address.
 // MAXVA is actually one bit less than the max allowed by
 // Sv39, to avoid having to sign-extend virtual addresses
 // that have the high bit set.
 const MAXVA = 1 << (9 + 9 + 9 + 12 - 1);
-const PGSIZE = 4096;
-const TRAMPOLINE = MAXVA - PGSIZE;
+pub const PGSIZE = 4096;
+pub const TRAMPOLINE = MAXVA - PGSIZE;
 
 /// kernel.ld sets this to end of kernel code.
 extern const etext: u1;
@@ -20,7 +21,7 @@ extern const trampoline: u1;
 /// the kernel's page table.
 var kernel_pagetable: Address = undefined;
 
-const Address = packed union {
+pub const Address = packed union {
     interger: usize,
     buffer: [*]u8,
     vaddr: VirtualAddr,
@@ -163,7 +164,7 @@ pub fn init() void {
     });
 
     // allocate and map a kernel stack for each process.
-    proc_mapstacks(kernel_pagetable);
+    proc.mapstacks(kernel_pagetable);
 }
 
 // flush the TLB.
@@ -271,7 +272,7 @@ export fn mappages(pagetable: Address, vaddress: usize, size: usize, paddress: u
 /// add a mapping to the kernel page table.
 /// only used when booting.
 /// does not flush TLB or enable paging.
-export fn kvmmap(pagetable: Address, va: usize, pa: usize, size: usize, perm: Pte.Flags) void {
+pub export fn kvmmap(pagetable: Address, va: usize, pa: usize, size: usize, perm: Pte.Flags) void {
     if (mappages(pagetable, va, size, pa, perm) != 0) @panic("kvmmap");
 }
 
