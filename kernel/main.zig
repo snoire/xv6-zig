@@ -34,7 +34,7 @@ pub fn main() callconv(.C) void {
         c.iinit(); // inode table
         c.fileinit(); // file table
         c.virtio_disk_init(); // emulated hard disk
-        c.userinit(); // first user process
+        kernel.proc.userinit();
 
         started.store(true, .Release);
     } else {

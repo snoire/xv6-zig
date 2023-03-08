@@ -7,6 +7,7 @@ pub const syscall = @import("syscall.zig");
 pub const print = @import("print.zig");
 pub const kalloc = @import("kalloc.zig");
 pub const vm = @import("vm.zig");
+pub const proc = @import("proc.zig");
 
 /// maximum number of processes
 pub const NPROC = 64;

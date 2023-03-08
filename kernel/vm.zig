@@ -39,7 +39,7 @@ pub const Address = packed union {
         }
     }
 
-    const PageTable = *[512]Pte; // 512 PTEs
+    pub const PageTable = *[512]Pte; // 512 PTEs
 
     /// virtual address
     const VirtualAddr = packed struct {
@@ -305,8 +305,8 @@ export fn uvmcreate() Address {
 /// Load the user initcode into address 0 of pagetable,
 /// for the very first process.
 /// sz must be less than a page.
-export fn uvmfirst(pagetable: Address, src: [*]u8, sz: usize) void {
-    if (sz >= PGSIZE) @panic("uvmfirst: more than a page");
+pub fn uvmfirst(pagetable: Address, src: []const u8) void {
+    if (src.len >= PGSIZE) @panic("uvmfirst: more than a page");
 
     var mem = Address{ .page = kalloc.kalloc().? };
     var ret = mappages(pagetable, 0, PGSIZE, mem.interger, .{
@@ -317,7 +317,7 @@ export fn uvmfirst(pagetable: Address, src: [*]u8, sz: usize) void {
     });
     if (ret != 0) @panic("uvmfirst");
 
-    std.mem.copy(u8, mem.page, src[0..sz]);
+    std.mem.copy(u8, mem.page, src);
 }
 
 /// Allocate PTEs and physical memory to grow process from oldsz to

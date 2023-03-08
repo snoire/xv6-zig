@@ -189,7 +189,7 @@ pub const Cpu = extern struct {
 /// the trapframe includes callee-saved user registers like s0-s11 because the
 /// return-to-user path via usertrapret() doesn't return through
 /// the entire kernel call stack.
-const TrapFrame = extern struct {
+pub const TrapFrame = extern struct {
     /// kernel page table
     kernel_satp: usize, // 0
     /// top of process's kernel stack
@@ -236,7 +236,7 @@ const TrapFrame = extern struct {
 
 /// Per-process state
 pub const Proc = extern struct {
-    pub const PageTable = *usize; // 512 PTEs
+    pub const PageTable = xv6.vm.Address.PageTable; // 512 PTEs
 
     lock: SpinLock,
 

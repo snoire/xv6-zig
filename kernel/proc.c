@@ -102,7 +102,6 @@ allocpid()
 
   return pid;
 }
-#endif
 
 // Look in the process table for an UNUSED proc.
 // If found, initialize state required to run in the kernel,
@@ -150,6 +149,8 @@ found:
 
   return p;
 }
+#endif
+extern struct proc* allocproc(void);
 
 // free a proc structure and the data hanging from it,
 // including user pages.
@@ -217,6 +218,7 @@ proc_freepagetable(pagetable_t pagetable, uint64 sz)
   uvmfree(pagetable, sz);
 }
 
+#if 0
 // a user program that calls exec("/init")
 // assembled from ../user/initcode.S
 // od -t xC ../user/initcode
@@ -255,6 +257,7 @@ userinit(void)
 
   release(&p->lock);
 }
+#endif
 
 // Grow or shrink user memory by n bytes.
 // Return 0 on success, -1 on failure.
