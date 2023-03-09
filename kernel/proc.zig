@@ -14,19 +14,18 @@ const PGSIZE = vm.PGSIZE;
 /// trampoline.S
 extern const trampoline: u1;
 
-extern var cpus: [xv6.NCPU]c.Cpu;
-extern var proc: [xv6.NPROC]c.Proc;
-extern var initproc: *c.Proc;
+var cpus: [xv6.NCPU]c.Cpu = undefined;
+var proc: [xv6.NPROC]c.Proc = undefined;
+var initproc: *c.Proc = undefined;
 
-extern var nextpid: c_int;
-extern var pid_lock: c.SpinLock;
-// var pid_lock: SpinLock = SpinLock.init("nextpid");
+var nextpid: c_int = 1;
+var pid_lock: SpinLock = SpinLock.init("nextpid");
 
 /// helps ensure that wakeups of wait()ing
 /// parents are not lost. helps obey the
 /// memory model when using p->parent.
 /// must be acquired before any p->lock.
-extern var wait_lock: c.SpinLock;
+var wait_lock: c.SpinLock = undefined; // TODO
 // var wait_lock: SpinLock = SpinLock.init("wait_lock");
 
 /// Allocate a page for each process's kernel stack.
@@ -40,6 +39,17 @@ pub fn mapstacks(pagetable: Address) void {
             .readable = true,
             .writable = true,
         });
+    }
+}
+
+/// initialize the proc table.
+pub fn init() void {
+    c.initlock(&wait_lock, "wait_lock");
+
+    for (&proc, 1..) |*p, i| {
+        c.initlock(&p.lock, "proc");
+        p.state = .unused;
+        p.kstack = TRAMPOLINE - (i * 2 * PGSIZE);
     }
 }
 
@@ -65,8 +75,8 @@ pub export fn myproc() ?*c.Proc {
 }
 
 fn allocpid() c_int {
-    c.acquire(&pid_lock);
-    defer c.release(&pid_lock);
+    pid_lock.acquire();
+    defer pid_lock.release();
 
     var pid = nextpid;
     nextpid += 1;
@@ -203,6 +213,25 @@ pub fn userinit() void {
     p.state = .runnable;
 
     c.release(&p.lock);
+}
+
+/// Grow or shrink user memory by n bytes.
+/// Return 0 on success, -1 on failure.
+export fn growproc(n: c_int) c_int {
+    var p = myproc().?;
+    var sz = p.sz;
+
+    if (n > 0) {
+        sz = vm.uvmalloc(.{ .pagetable = p.pagetable.? }, sz, sz + @intCast(usize, n), .{
+            .writable = true,
+        });
+        if (sz < 0) @panic("growproc");
+    } else {
+        sz = vm.uvmdealloc(.{ .pagetable = p.pagetable.? }, sz, sz + @intCast(usize, n));
+    }
+
+    p.sz = sz;
+    return 0;
 }
 
 // Create a new process, copying the parent.

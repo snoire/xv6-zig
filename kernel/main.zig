@@ -25,7 +25,7 @@ pub fn main() callconv(.C) void {
         kernel.kalloc.init(); // physical page allocator
         kernel.vm.init(); // create kernel page table
         kernel.vm.inithart(); // turn on paging
-        c.procinit(); // process table
+        kernel.proc.init(); // process table
         c.trapinit(); // trap vectors
         c.trapinithart(); // install kernel trap vector
         c.plicinit(); // set up interrupt controller

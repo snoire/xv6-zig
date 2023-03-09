@@ -323,7 +323,7 @@ pub fn uvmfirst(pagetable: Address, src: []const u8) void {
 
 /// Allocate PTEs and physical memory to grow process from oldsz to
 /// newsz, which need not be page aligned.  Returns new size or panic on error.
-export fn uvmalloc(pagetable: Address, oldsz: usize, newsz: usize, xperm: Pte.Flags) usize {
+pub export fn uvmalloc(pagetable: Address, oldsz: usize, newsz: usize, xperm: Pte.Flags) usize {
     if (newsz < oldsz) return oldsz;
 
     var flags = xperm;
@@ -343,7 +343,7 @@ export fn uvmalloc(pagetable: Address, oldsz: usize, newsz: usize, xperm: Pte.Fl
 /// newsz.  oldsz and newsz need not be page-aligned, nor does newsz
 /// need to be less than oldsz.  oldsz can be larger than the actual
 /// process size.  Returns the new process size.
-export fn uvmdealloc(pagetable: Address, oldsz: usize, newsz: usize) usize {
+pub export fn uvmdealloc(pagetable: Address, oldsz: usize, newsz: usize) usize {
     if (newsz < oldsz) return oldsz;
 
     var old = std.mem.alignForward(oldsz, PGSIZE);

@@ -15,6 +15,7 @@ pub const SpinLock = extern struct {
 pub extern fn acquire(lock: *SpinLock) void;
 pub extern fn release(lock: *SpinLock) void;
 pub extern fn holding(lock: *SpinLock) bool;
+pub extern fn initlock(lk: *SpinLock, name: [*:0]const u8) void;
 
 /// Long-term locks for processes
 pub const SleepLock = extern struct {

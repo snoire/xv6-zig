@@ -58,7 +58,6 @@ procinit(void)
   }
 }
 
-#if 0
 // Must be called with interrupts disabled,
 // to prevent race with process being moved
 // to a different CPU.
@@ -254,7 +253,6 @@ userinit(void)
 
   release(&p->lock);
 }
-#endif
 
 // Grow or shrink user memory by n bytes.
 // Return 0 on success, -1 on failure.
@@ -276,7 +274,6 @@ growproc(int n)
   return 0;
 }
 
-#if 0
 // Create a new process, copying the parent.
 // Sets up child kernel stack to return as if from fork() system call.
 int
@@ -684,4 +681,3 @@ procdump(void)
     printf("\n");
   }
 }
-#endif
