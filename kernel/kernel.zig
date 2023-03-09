@@ -3,7 +3,7 @@ const csr = xv6.register.csr;
 const gpr = xv6.register.gpr;
 const clint = xv6.clint;
 const main = @import("main.zig").main;
-pub const panic = xv6.print.panic;
+pub const panic = @import("print.zig").panicFn;
 
 export var stack0: [xv6.NCPU * 1024 * 16]u8 align(16) = undefined;
 // assembly code in kernelvec.S for machine-mode timer interrupt.

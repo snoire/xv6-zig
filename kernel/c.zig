@@ -14,6 +14,7 @@ pub const SpinLock = extern struct {
 };
 pub extern fn acquire(lock: *SpinLock) void;
 pub extern fn release(lock: *SpinLock) void;
+pub extern fn holding(lock: *SpinLock) bool;
 
 /// Long-term locks for processes
 pub const SleepLock = extern struct {
@@ -167,6 +168,7 @@ const Context = extern struct {
     s10: usize,
     s11: usize,
 };
+pub extern fn swtch(old: *Context, new: *Context) void;
 
 /// Per-CPU state.
 pub const Cpu = extern struct {
@@ -247,7 +249,7 @@ pub const Proc = extern struct {
     /// Process state
     state: ProcState,
     /// If non-zero, sleeping on chan
-    chan: *anyopaque,
+    chan: ?*anyopaque,
     /// If non-zero, have been killed
     killed: c_int,
     /// Exit status to be returned to parent's wait
@@ -286,3 +288,9 @@ pub const Proc = extern struct {
         zombie,
     };
 };
+
+// trap.c
+pub extern fn usertrapret() void;
+
+// fs.c
+pub extern fn fsinit(c_int) void;

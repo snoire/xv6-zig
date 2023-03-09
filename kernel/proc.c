@@ -477,6 +477,7 @@ scheduler(void)
   }
 }
 
+#if 0
 // Switch to scheduler.  Must hold only p->lock
 // and have changed proc->state. Saves and restores
 // intena because intena is a property of this
@@ -584,6 +585,7 @@ wakeup(void *chan)
     }
   }
 }
+#endif
 
 // Kill the process with the given pid.
 // The victim won't exit until it tries to return

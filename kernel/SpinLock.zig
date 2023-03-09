@@ -93,12 +93,12 @@ fn intrOff() void {
 }
 
 /// enable device interrupts
-fn intrOn() void {
+pub fn intrOn() void {
     csr.sstatus.set(.{ .sie = true });
 }
 
 // are device interrupts enabled?
-fn intrGet() bool {
+pub fn intrGet() bool {
     return csr.sstatus.read().sie;
 }
 

@@ -2,7 +2,7 @@ const std = @import("std");
 const c = @import("c.zig");
 const kernel = @import("xv6.zig");
 const proc = @import("proc.zig");
-const print = kernel.print.print;
+const print = kernel.print;
 const Proc = c.Proc;
 const PageTable = Proc.PageTable;
 

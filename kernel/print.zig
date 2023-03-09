@@ -19,11 +19,15 @@ fn write(_: void, string: []const u8) error{}!usize {
 
 const Writer = std.io.Writer(void, error{}, write);
 
-pub fn print(comptime format: []const u8, args: anytype) void {
+fn print(comptime format: []const u8, args: anytype) void {
+    std.fmt.format(Writer{ .context = {} }, format, args) catch unreachable;
+}
+
+pub fn printFn(comptime format: []const u8, args: anytype) void {
     const locking = pr.locking;
     if (locking) pr.lock.acquire();
 
-    std.fmt.format(Writer{ .context = {} }, format, args) catch unreachable;
+    print(format, args);
 
     if (locking) pr.lock.release();
 }
@@ -31,6 +35,9 @@ pub fn print(comptime format: []const u8, args: anytype) void {
 export fn printf(format: [*:0]const u8, ...) void {
     var ap = @cVaStart();
     defer @cVaEnd(&ap);
+
+    const locking = pr.locking;
+    if (locking) pr.lock.acquire();
 
     var state: enum { normal, wait_for_specifier } = .normal;
 
@@ -54,9 +61,11 @@ export fn printf(format: [*:0]const u8, ...) void {
             state = .normal;
         }
     }
+
+    if (locking) pr.lock.release();
 }
 
-pub fn panic(msg: []const u8, _: ?*std.builtin.StackTrace, return_addr: ?usize) noreturn {
+pub fn panicFn(msg: []const u8, _: ?*std.builtin.StackTrace, return_addr: ?usize) noreturn {
     @setCold(true);
     pr.locking = false;
     print("\x1b[31m" ++ "KERNEL PANIC: {s}!\n" ++ "\x1b[m", .{msg});
@@ -73,12 +82,8 @@ pub fn panic(msg: []const u8, _: ?*std.builtin.StackTrace, return_addr: ?usize) 
     while (true) {}
 }
 
-fn cpanic(msg: [*:0]const u8) callconv(.C) noreturn {
-    panic(std.mem.span(msg), null, null);
-}
-
-comptime {
-    @export(cpanic, .{ .name = "panic", .linkage = .Strong });
+export fn panic(msg: [*:0]const u8) noreturn {
+    panicFn(std.mem.span(msg), null, null);
 }
 
 // workaround for https://github.com/ziglang/zig/issues/12533

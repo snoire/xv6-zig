@@ -11,7 +11,6 @@ const PGSIZE = vm.PGSIZE;
 
 /// trampoline.S
 extern const trampoline: u1;
-extern fn forkret() void;
 
 extern var cpus: [xv6.NCPU]c.Cpu;
 extern var proc: [xv6.NPROC]c.Proc;
@@ -192,4 +191,132 @@ export fn fork() c_int {
     c.release(&np.lock);
 
     return pid;
+}
+
+/// Per-CPU process scheduler.
+/// Each CPU calls scheduler() after setting itself up.
+/// Scheduler never returns.  It loops, doing:
+///  - choose a process to run.
+///  - swtch to start running that process.
+///  - eventually that process transfers control
+///    via swtch back to the scheduler.
+pub fn scheduler() void {
+    var cpu = mycpu();
+    cpu.proc = null;
+
+    while (true) {
+        // Avoid deadlock by ensuring that devices can interrupt.
+        SpinLock.intrOn();
+
+        for (&proc) |*p| {
+            c.acquire(&p.lock);
+            defer c.release(&p.lock);
+
+            if (p.state == .runnable) {
+                // Switch to chosen process.  It is the process's job
+                // to release its lock and then reacquire it
+                // before jumping back to us.
+                p.state = .running;
+                cpu.proc = p;
+                c.swtch(&cpu.context, &p.context);
+
+                // Process is done running for now.
+                // It should have changed its p->state before coming back.
+                cpu.proc = null;
+            }
+        }
+    }
+}
+
+/// Switch to scheduler.  Must hold only p->lock
+/// and have changed proc->state. Saves and restores
+/// intena because intena is a property of this
+/// kernel thread, not this CPU. It should
+/// be proc->intena and proc->noff, but that would
+/// break in the few places where a lock is held but
+/// there's no process.
+export fn sched() void {
+    var p = myproc().?;
+
+    if (!c.holding(&p.lock)) @panic("sched p->lock");
+    if (mycpu().noff != 1) @panic("sched locks");
+    if (p.state == .running) @panic("sched running");
+    if (SpinLock.intrGet()) @panic("sched interruptible");
+
+    var intena = mycpu().intena;
+    c.swtch(&p.context, &mycpu().context);
+    mycpu().intena = intena;
+}
+
+/// Give up the CPU for one scheduling round.
+export fn yield() void {
+    var p = myproc().?;
+    c.acquire(&p.lock);
+    defer c.release(&p.lock);
+
+    p.state = .runnable;
+    sched();
+}
+
+/// A fork child's very first scheduling by scheduler()
+/// will swtch to forkret.
+export fn forkret() void {
+    // static local variable
+    const S = struct {
+        var first: bool = true;
+    };
+
+    c.release(&myproc().?.lock);
+
+    if (S.first) {
+        S.first = false;
+        // File system initialization must be run in the context of a
+        // regular process (e.g., because it calls sleep), and thus cannot
+        // be run from main().
+        c.fsinit(xv6.ROOTDEV);
+    }
+
+    c.usertrapret();
+}
+
+/// Atomically release lock and sleep on chan.
+/// Reacquires lock when awakened.
+export fn sleep(chan: *anyopaque, lk: *c.SpinLock) void {
+
+    // Must acquire p->lock in order to
+    // change p->state and then call sched.
+    // Once we hold p->lock, we can be
+    // guaranteed that we won't miss any wakeup
+    // (wakeup locks p->lock),
+    // so it's okay to release lk.
+    var p = myproc().?;
+    c.acquire(&p.lock);
+    defer c.release(&p.lock);
+
+    c.release(lk);
+    defer c.acquire(lk);
+
+    // Go to sleep.
+    p.chan = chan;
+    p.state = .sleeping;
+
+    sched();
+
+    // Tidy up.
+    p.chan = null;
+}
+
+/// Wake up all processes sleeping on chan.
+/// Must be called without any p->lock.
+export fn wakeup(chan: *anyopaque) void {
+    for (&proc) |*p| {
+        if (p == myproc()) continue;
+
+        c.acquire(&p.lock);
+        defer c.release(&p.lock);
+
+        if (p.state == .sleeping and p.chan == chan) {
+            p.state = .runnable;
+        }
+    }
 }
