@@ -150,7 +150,6 @@ found:
   return p;
 }
 #endif
-extern struct proc* allocproc(void);
 
 // free a proc structure and the data hanging from it,
 // including user pages.
@@ -279,6 +278,7 @@ growproc(int n)
   return 0;
 }
 
+#if 0
 // Create a new process, copying the parent.
 // Sets up child kernel stack to return as if from fork() system call.
 int
@@ -329,6 +329,7 @@ fork(void)
 
   return pid;
 }
+#endif
 
 // Pass p's abandoned children to init.
 // Caller must hold wait_lock.

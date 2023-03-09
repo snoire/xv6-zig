@@ -78,7 +78,7 @@ extern fn proc_pagetable(p: *c.Proc) ?Address.PageTable;
 /// If found, initialize state required to run in the kernel,
 /// and return with p->lock held.
 /// If there are no free procs, or a memory allocation fails, return 0.
-export fn allocproc() ?*c.Proc {
+fn allocproc() ?*c.Proc {
     var p: *c.Proc = for (&proc) |*p| {
         c.acquire(&p.lock);
 
@@ -144,4 +144,52 @@ pub fn userinit() void {
     p.state = .runnable;
 
     c.release(&p.lock);
+}
+
+// Create a new process, copying the parent.
+// Sets up child kernel stack to return as if from fork() system call.
+export fn fork() c_int {
+    // Allocate process.
+    var p = myproc().?;
+    var np = allocproc().?;
+
+    // Copy user memory from parent to child.
+    vm.uvmcopy(
+        .{ .pagetable = p.pagetable },
+        .{ .pagetable = np.pagetable },
+        p.sz,
+    );
+
+    np.sz = p.sz;
+
+    // copy saved user registers.
+    np.trapframe.* = p.trapframe.*;
+
+    // Cause fork to return 0 in the child.
+    np.trapframe.a0 = 0;
+
+    // increment reference counts on open file descriptors.
+    for (p.ofile, &np.ofile) |old_ofile, *new_ofile| {
+        if (old_ofile) |old_file| {
+            new_ofile.* = c.filedup(old_file);
+        }
+    }
+
+    np.cwd = c.idup(p.cwd);
+
+    std.mem.copy(u8, np.name[0..], p.name[0..]);
+
+    var pid = np.pid;
+
+    c.release(&np.lock);
+
+    c.acquire(&wait_lock);
+    np.parent = p;
+    c.release(&wait_lock);
+
+    c.acquire(&np.lock);
+    np.state = .runnable;
+    c.release(&np.lock);
+
+    return pid;
 }

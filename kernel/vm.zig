@@ -384,9 +384,8 @@ export fn uvmfree(pagetable: Address, sz: usize) void {
 /// its memory into a child's page table.
 /// Copies both the page table and the
 /// physical memory.
-/// returns 0 on success, or panic on failure.
-/// frees any allocated pages on failure.
-export fn uvmcopy(old_pagetable: Address, new_pagetable: Address, sz: usize) c_int {
+/// panic on failure.
+pub fn uvmcopy(old_pagetable: Address, new_pagetable: Address, sz: usize) void {
     var i: usize = 0;
     while (i < sz) : (i += PGSIZE) {
         var pte = walk(old_pagetable, .{ .interger = i }, false).?;
@@ -400,8 +399,6 @@ export fn uvmcopy(old_pagetable: Address, new_pagetable: Address, sz: usize) c_i
             @panic("mappages");
         }
     }
-
-    return 0;
 }
 
 /// mark a PTE invalid for user access.

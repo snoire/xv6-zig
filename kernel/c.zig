@@ -79,6 +79,9 @@ pub const File = extern struct {
     major: c_short,
 };
 
+pub extern fn filedup(file: *File) *File;
+pub extern fn idup(inode: *Inode) *Inode;
+
 /// in-memory copy of an inode
 pub const Inode = extern struct {
     /// Device number
@@ -268,7 +271,7 @@ pub const Proc = extern struct {
     /// swtch() here to run process
     context: Context,
     /// Open files
-    ofile: [xv6.NOFILE]*File,
+    ofile: [xv6.NOFILE]?*File,
     /// Current directory
     cwd: *Inode,
     /// Process name (debugging)
