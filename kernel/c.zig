@@ -81,7 +81,11 @@ pub const File = extern struct {
 };
 
 pub extern fn filedup(file: *File) *File;
-pub extern fn idup(inode: *Inode) *Inode;
+pub extern fn fileclose(file: *File) void;
+
+// log.c
+pub extern fn begin_op() void;
+pub extern fn end_op() void;
 
 /// in-memory copy of an inode
 pub const Inode = extern struct {
@@ -104,6 +108,11 @@ pub const Inode = extern struct {
     size: c_uint,
     addrs: [fs.NDIRECT + 1 + 1]c_uint,
 };
+
+// fs.c
+pub extern fn fsinit(c_int) void;
+pub extern fn idup(inode: *Inode) *Inode;
+pub extern fn iput(inode: *Inode) void;
 
 // Disk layout:
 // [ boot block | super block | log | inode blocks | free bit map | data blocks]
@@ -259,7 +268,7 @@ pub const Proc = extern struct {
 
     // wait_lock must be held when using this:
     /// Parent process
-    parent: *Proc,
+    parent: ?*Proc,
 
     // these are private to the process, so p->lock need not be held.
     /// Virtual address of kernel stack
@@ -267,15 +276,15 @@ pub const Proc = extern struct {
     /// Size of process memory (bytes)
     sz: usize,
     /// User page table
-    pagetable: PageTable,
+    pagetable: ?PageTable,
     /// data page for trampoline.S
-    trapframe: *TrapFrame,
+    trapframe: ?*TrapFrame,
     /// swtch() here to run process
     context: Context,
     /// Open files
     ofile: [xv6.NOFILE]?*File,
     /// Current directory
-    cwd: *Inode,
+    cwd: ?*Inode,
     /// Process name (debugging)
     name: [16]u8,
 
@@ -291,6 +300,3 @@ pub const Proc = extern struct {
 
 // trap.c
 pub extern fn usertrapret() void;
-
-// fs.c
-pub extern fn fsinit(c_int) void;

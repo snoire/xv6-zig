@@ -15,7 +15,7 @@ export fn fetchaddr(addr: usize, ip: *usize) c_int {
         return -1;
     }
 
-    if (copyin(p.pagetable, @ptrCast([*:0]u8, ip), addr, @sizeOf(@TypeOf(ip.*))) != 0) {
+    if (copyin(p.pagetable.?, @ptrCast([*:0]u8, ip), addr, @sizeOf(@TypeOf(ip.*))) != 0) {
         return -1;
     }
 
@@ -26,12 +26,12 @@ fn argraw(n: u8) usize {
     var p: *Proc = myproc().?;
 
     return switch (n) {
-        0 => p.trapframe.a0,
-        1 => p.trapframe.a1,
-        2 => p.trapframe.a2,
-        3 => p.trapframe.a3,
-        4 => p.trapframe.a4,
-        5 => p.trapframe.a5,
+        0 => p.trapframe.?.a0,
+        1 => p.trapframe.?.a1,
+        2 => p.trapframe.?.a2,
+        3 => p.trapframe.?.a3,
+        4 => p.trapframe.?.a4,
+        5 => p.trapframe.?.a5,
         else => @panic("argraw"),
     };
 }
@@ -67,7 +67,7 @@ extern fn copyinstr(pagetable: PageTable, dst: [*:0]u8, srcva: usize, max: usize
 /// Returns length of string, not including nul, or -1 for error.
 export fn fetchstr(addr: usize, buf: [*:0]u8, max: usize) c_int {
     var p: *Proc = myproc().?;
-    if (copyinstr(p.pagetable, buf, addr, max) != 0) {
+    if (copyinstr(p.pagetable.?, buf, addr, max) != 0) {
         return -1;
     }
     return @intCast(c_int, std.mem.len(buf));
@@ -137,14 +137,14 @@ const myproc = proc.myproc;
 
 pub export fn syscall() void {
     var p: *Proc = myproc().?;
-    var num = p.trapframe.a7;
+    var num = p.trapframe.?.a7;
 
     if (num > 0 and num < syscalls.len) {
         // Use num to lookup the system call function for num, call it,
         // and store its return value in p.trapframe.a0
-        p.trapframe.a0 = syscalls[num]();
+        p.trapframe.?.a0 = syscalls[num]();
     } else {
         print("{} {s}: unknown sys call {}\n", .{ p.pid, &p.name, num });
-        p.trapframe.a0 = std.math.maxInt(usize);
+        p.trapframe.?.a0 = std.math.maxInt(usize);
     }
 }

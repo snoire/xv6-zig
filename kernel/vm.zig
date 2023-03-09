@@ -12,6 +12,7 @@ const proc = @import("proc.zig");
 const MAXVA = 1 << (9 + 9 + 9 + 12 - 1);
 pub const PGSIZE = 4096;
 pub const TRAMPOLINE = MAXVA - PGSIZE;
+pub const TRAPFRAME = TRAMPOLINE - PGSIZE;
 
 /// kernel.ld sets this to end of kernel code.
 extern const etext: u1;
@@ -246,7 +247,7 @@ fn walkaddr(pagetable: Address, va: Address) Address {
 /// physical addresses starting at pa. va and size might not
 /// be page-aligned. Returns 0 on success, -1 if walk() couldn't
 /// allocate a needed page-table page.
-export fn mappages(pagetable: Address, vaddress: usize, size: usize, paddress: usize, perm: Pte.Flags) c_int {
+pub export fn mappages(pagetable: Address, vaddress: usize, size: usize, paddress: usize, perm: Pte.Flags) c_int {
     if (size == 0) @panic("mappages: size");
 
     var pa = Address{ .interger = paddress };
@@ -279,7 +280,7 @@ pub export fn kvmmap(pagetable: Address, va: usize, pa: usize, size: usize, perm
 /// Remove npages of mappings starting from va. va must be
 /// page-aligned. The mappings must exist.
 /// Optionally free the physical memory.
-export fn uvmunmap(pagetable: Address, va: Address, npages: usize, do_free: bool) void {
+pub export fn uvmunmap(pagetable: Address, va: Address, npages: usize, do_free: bool) void {
     if (!std.mem.isAligned(va.interger, PGSIZE)) @panic("uvmunmap: not aligned");
 
     var addr = va;
@@ -298,7 +299,7 @@ export fn uvmunmap(pagetable: Address, va: Address, npages: usize, do_free: bool
 
 /// create an empty user page table.
 /// panic if out of memory.
-export fn uvmcreate() Address {
+pub export fn uvmcreate() Address {
     return .{ .page = kalloc.kalloc().? };
 }
 
@@ -375,7 +376,7 @@ export fn freewalk(pagetable: Address) void {
 
 /// Free user memory pages,
 /// then free page-table pages.
-export fn uvmfree(pagetable: Address, sz: usize) void {
+pub export fn uvmfree(pagetable: Address, sz: usize) void {
     uvmunmap(pagetable, .{ .interger = 0 }, std.mem.alignForward(sz, PGSIZE) / PGSIZE, true);
     freewalk(pagetable);
 }
@@ -411,7 +412,7 @@ export fn uvmclear(pagetable: Address, va: Address) void {
 /// Copy from kernel to user.
 /// Copy len bytes from src to virtual address dstva in a given page table.
 /// Return 0 on success, -1 on error.
-export fn copyout(pagetable: Address, dstva: Address, source: [*]const u8, length: usize) c_int {
+pub export fn copyout(pagetable: Address, dstva: Address, source: [*]const u8, length: usize) c_int {
     var n: usize = 0;
     var dst = dstva;
 
@@ -430,7 +431,7 @@ export fn copyout(pagetable: Address, dstva: Address, source: [*]const u8, lengt
 /// Copy from user to kernel.
 /// Copy len bytes to dst from virtual address srcva in a given page table.
 /// Return 0 on success, -1 on error.
-export fn copyin(pagetable: Address, dst: [*]u8, srcva: Address, length: usize) c_int {
+pub export fn copyin(pagetable: Address, dst: [*]u8, srcva: Address, length: usize) c_int {
     var n: usize = 0;
     var src = srcva;
 

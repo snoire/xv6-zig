@@ -6,7 +6,9 @@ const SpinLock = @import("SpinLock.zig");
 const vm = xv6.vm;
 const Address = vm.Address;
 const kalloc = xv6.kalloc;
+const print = xv6.print;
 const TRAMPOLINE = vm.TRAMPOLINE;
+const TRAPFRAME = vm.TRAPFRAME;
 const PGSIZE = vm.PGSIZE;
 
 /// trampoline.S
@@ -62,7 +64,7 @@ pub export fn myproc() ?*c.Proc {
     return mycpu().proc;
 }
 
-export fn allocpid() c_int {
+fn allocpid() c_int {
     c.acquire(&pid_lock);
     defer c.release(&pid_lock);
 
@@ -70,8 +72,6 @@ export fn allocpid() c_int {
     nextpid += 1;
     return pid;
 }
-
-extern fn proc_pagetable(p: *c.Proc) ?Address.PageTable;
 
 /// Look in the process table for an UNUSED proc.
 /// If found, initialize state required to run in the kernel,
@@ -108,6 +108,66 @@ fn allocproc() ?*c.Proc {
     return p;
 }
 
+// extern fn proc_pagetable(p: *c.Proc) ?Address.PageTable;
+
+/// Create a user page table for a given process, with no user memory,
+/// but with trampoline and trapframe pages.
+export fn proc_pagetable(p: *c.Proc) ?Address.PageTable {
+    // An empty page table.
+    var pagetable = vm.uvmcreate();
+
+    // map the trampoline code (for system call return)
+    // at the highest user virtual address.
+    // only the supervisor uses it, on the way
+    // to/from user space, so not PTE_U.
+    var ret = vm.mappages(pagetable, TRAMPOLINE, PGSIZE, @ptrToInt(&trampoline), .{
+        .readable = true,
+        .executable = true,
+    });
+    if (ret < 0) @panic("procPagetable");
+
+    // map the trapframe page just below the trampoline page, for
+    // trampoline.S.
+    ret = vm.mappages(pagetable, TRAPFRAME, PGSIZE, @ptrToInt(p.trapframe), .{
+        .readable = true,
+        .writable = true,
+    });
+    if (ret < 0) @panic("procPagetable");
+
+    return pagetable.pagetable;
+}
+
+/// free a proc structure and the data hanging from it,
+/// including user pages.
+/// p->lock must be held.
+fn freeproc(p: *c.Proc) void {
+    if (p.trapframe != null) {
+        kalloc.kfree(@ptrCast(kalloc.Page, @alignCast(PGSIZE, p.trapframe.?)));
+        p.trapframe = null;
+    }
+
+    if (p.pagetable != null) {
+        proc_freepagetable(.{ .pagetable = p.pagetable.? }, p.sz);
+        p.pagetable = null;
+    }
+    p.sz = 0;
+    p.pid = 0;
+    p.parent = null;
+    p.name[0] = 0;
+    p.chan = null;
+    p.killed = 0;
+    p.xstate = 0;
+    p.state = .unused;
+}
+
+/// Free a process's page table, and free the
+/// physical memory it refers to.
+export fn proc_freepagetable(pagetable: Address, sz: usize) void {
+    vm.uvmunmap(pagetable, .{ .interger = TRAMPOLINE }, 1, false);
+    vm.uvmunmap(pagetable, .{ .interger = TRAPFRAME }, 1, false);
+    vm.uvmfree(pagetable, sz);
+}
+
 /// a user program that calls exec("/init")
 /// assembled from ../user/initcode.S
 /// od -t xC ../user/initcode
@@ -131,12 +191,12 @@ pub fn userinit() void {
 
     // allocate one user page and copy initcode's instructions
     // and data into it.
-    vm.uvmfirst(Address{ .pagetable = p.pagetable }, &initcode);
+    vm.uvmfirst(Address{ .pagetable = p.pagetable.? }, &initcode);
     p.sz = PGSIZE;
 
     // prepare for the very first "return" from kernel to user.
-    p.trapframe.epc = 0; // user program counter
-    p.trapframe.sp = PGSIZE; // user stack pointer
+    p.trapframe.?.epc = 0; // user program counter
+    p.trapframe.?.sp = PGSIZE; // user stack pointer
 
     std.mem.copy(u8, p.name[0..], "initcode");
     p.cwd = namei("/");
@@ -154,18 +214,18 @@ export fn fork() c_int {
 
     // Copy user memory from parent to child.
     vm.uvmcopy(
-        .{ .pagetable = p.pagetable },
-        .{ .pagetable = np.pagetable },
+        .{ .pagetable = p.pagetable.? },
+        .{ .pagetable = np.pagetable.? },
         p.sz,
     );
 
     np.sz = p.sz;
 
     // copy saved user registers.
-    np.trapframe.* = p.trapframe.*;
+    np.trapframe.?.* = p.trapframe.?.*;
 
     // Cause fork to return 0 in the child.
-    np.trapframe.a0 = 0;
+    np.trapframe.?.a0 = 0;
 
     // increment reference counts on open file descriptors.
     for (p.ofile, &np.ofile) |old_ofile, *new_ofile| {
@@ -174,7 +234,7 @@ export fn fork() c_int {
         }
     }
 
-    np.cwd = c.idup(p.cwd);
+    np.cwd = c.idup(p.cwd.?);
 
     std.mem.copy(u8, np.name[0..], p.name[0..]);
 
@@ -191,6 +251,105 @@ export fn fork() c_int {
     c.release(&np.lock);
 
     return pid;
+}
+
+/// Pass p's abandoned children to init.
+/// Caller must hold wait_lock.
+fn reparent(p: *c.Proc) void {
+    for (&proc) |*pp| {
+        if (pp.parent == p) {
+            pp.parent = initproc;
+            wakeup(initproc);
+        }
+    }
+}
+
+/// Exit the current process.  Does not return.
+/// An exited process remains in the zombie state
+/// until its parent calls wait().
+export fn exit(status: c_int) void {
+    var p = myproc().?;
+    if (p == initproc) @panic("init exiting");
+
+    // Close all open files.
+    var i: usize = 0;
+    while (i < p.ofile.len) : (i += 1) {
+        if (p.ofile[i]) |ofile| {
+            c.fileclose(ofile);
+            p.ofile[i] = null;
+        }
+    }
+
+    c.begin_op();
+    c.iput(p.cwd.?);
+    c.end_op();
+    p.cwd = null;
+
+    c.acquire(&wait_lock);
+
+    // Give any children to init.
+    reparent(p);
+
+    // Parent might be sleeping in wait().
+    wakeup(p.parent.?);
+
+    c.acquire(&p.lock);
+
+    p.xstate = status;
+    p.state = .zombie;
+
+    c.release(&wait_lock);
+
+    // Jump into the scheduler, never to return.
+    sched();
+    @panic("zombie exit");
+}
+
+// extern fn freeproc(p: *c.Proc) void;
+
+/// Wait for a child process to exit and return its pid.
+/// Return -1 if this process has no children.
+export fn wait(addr: usize) c_int {
+    var p = myproc().?;
+
+    c.acquire(&wait_lock);
+    defer c.release(&wait_lock);
+
+    while (true) {
+        var havekids: bool = false;
+
+        for (&proc) |*pp| {
+            if (pp.parent != p) continue;
+
+            // make sure the child isn't still in exit() or swtch().
+            c.acquire(&pp.lock);
+            defer c.release(&pp.lock);
+            havekids = true;
+
+            if (pp.state != .zombie) continue;
+            // Found one.
+            var pid = pp.pid;
+            var ret = vm.copyout(
+                .{ .pagetable = p.pagetable.? },
+                .{ .interger = addr },
+                @ptrCast([*]const u8, &pp.xstate),
+                @sizeOf(c_int),
+            );
+
+            if (addr > 0 and ret != 0) return -1;
+
+            freeproc(pp);
+            return pid;
+        } else {
+            // No point waiting if we don't have any children.
+            if (!havekids or killed(p) != 0) {
+                return -1;
+            }
+
+            // Wait for a child to exit.
+            sleep(p, &wait_lock);
+        }
+    }
 }
 
 /// Per-CPU process scheduler.
@@ -260,7 +419,7 @@ export fn yield() void {
 
 /// A fork child's very first scheduling by scheduler()
 /// will swtch to forkret.
-export fn forkret() void {
+fn forkret() void {
     // static local variable
     const S = struct {
         var first: bool = true;
@@ -339,4 +498,59 @@ export fn kill(pid: c_int) c_int {
     }
 
     return -1;
+}
+
+export fn setkilled(p: *c.Proc) void {
+    c.acquire(&p.lock);
+    defer c.release(&p.lock);
+
+    p.killed = 1;
+}
+
+export fn killed(p: *c.Proc) c_int {
+    c.acquire(&p.lock);
+    defer c.release(&p.lock);
+
+    var k = p.killed;
+    return k;
+}
+
+/// Copy to either a user address, or kernel address,
+/// depending on usr_dst.
+/// Returns 0 on success, -1 on error.
+export fn either_copyout(user_dst: bool, dst: Address, src: [*]const u8, len: usize) c_int {
+    var p = myproc().?;
+    if (user_dst) {
+        return vm.copyout(.{ .pagetable = p.pagetable.? }, dst, src, len);
+    } else {
+        std.mem.copy(u8, dst.buffer[0..len], src[0..len]);
+        return 0;
+    }
+}
+
+/// Copy from either a user address, or kernel address,
+/// depending on usr_src.
+/// Returns 0 on success, -1 on error.
+export fn either_copyin(dst: Address, user_src: bool, src: Address, len: usize) c_int {
+    var p = myproc().?;
+    if (user_src) {
+        return vm.copyin(.{ .pagetable = p.pagetable.? }, dst.buffer, src, len);
+    } else {
+        std.mem.copy(u8, dst.buffer[0..len], src.buffer[0..len]);
+        return 0;
+    }
+}
+
+/// Print a process listing to console.  For debugging.
+/// Runs when user types ^P on console.
+/// No lock to avoid wedging a stuck machine further.
+export fn procdump() void {
+    print("\n", .{});
+
+    // We iterate over array by reference because
+    // this will take less memory on stack.
+    for (&proc) |*p| {
+        if (p.state == .unused) continue;
+        print("{} {s} {s}\n", .{ p.pid, @tagName(p.state), p.name });
+    }
 }

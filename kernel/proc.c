@@ -149,7 +149,6 @@ found:
 
   return p;
 }
-#endif
 
 // free a proc structure and the data hanging from it,
 // including user pages.
@@ -217,7 +216,6 @@ proc_freepagetable(pagetable_t pagetable, uint64 sz)
   uvmfree(pagetable, sz);
 }
 
-#if 0
 // a user program that calls exec("/init")
 // assembled from ../user/initcode.S
 // od -t xC ../user/initcode
@@ -329,7 +327,6 @@ fork(void)
 
   return pid;
 }
-#endif
 
 // Pass p's abandoned children to init.
 // Caller must hold wait_lock.
@@ -477,7 +474,6 @@ scheduler(void)
   }
 }
 
-#if 0
 // Switch to scheduler.  Must hold only p->lock
 // and have changed proc->state. Saves and restores
 // intena because intena is a property of this
@@ -609,7 +605,6 @@ kill(int pid)
   }
   return -1;
 }
-#endif
 
 void
 setkilled(struct proc *p)
@@ -689,3 +684,4 @@ procdump(void)
     printf("\n");
   }
 }
+#endif

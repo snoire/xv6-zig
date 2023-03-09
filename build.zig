@@ -98,7 +98,11 @@ pub fn build(b: *std.Build) void {
 
     inline for (kfiles) |f| {
         const path = "kernel/" ++ f;
-        kernel.addObjectFile(path);
+        if (std.mem.endsWith(u8, f, ".S")) {
+            kernel.addAssemblyFile(path);
+        } else {
+            kernel.addCSourceFile(path, &.{});
+        }
     }
 
     kernel.strip = strip;
