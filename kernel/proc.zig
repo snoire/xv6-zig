@@ -291,10 +291,7 @@ export fn sleep(chan: *anyopaque, lk: *c.SpinLock) void {
     // so it's okay to release lk.
     var p = myproc().?;
     c.acquire(&p.lock);
-    defer c.release(&p.lock);
-
     c.release(lk);
-    defer c.acquire(lk);
 
     // Go to sleep.
     p.chan = chan;
@@ -304,6 +301,9 @@ export fn sleep(chan: *anyopaque, lk: *c.SpinLock) void {
 
     // Tidy up.
     p.chan = null;
+
+    c.release(&p.lock);
+    c.acquire(lk);
 }
 
 /// Wake up all processes sleeping on chan.
@@ -319,4 +319,24 @@ export fn wakeup(chan: *anyopaque) void {
             p.state = .runnable;
         }
     }
+}
+
+/// Kill the process with the given pid.
+/// The victim won't exit until it tries to return
+/// to user space (see usertrap() in trap.c).
+export fn kill(pid: c_int) c_int {
+    for (&proc) |*p| {
+        c.acquire(&p.lock);
+        defer c.release(&p.lock);
+
+        if (p.pid == pid) {
+            p.killed = 1;
+            if (p.state == .sleeping) {
+                p.state = .runnable;
+            }
+            return 0;
+        }
+    }
+
+    return -1;
 }

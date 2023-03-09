@@ -7,4 +7,4 @@ set riscv use-compressed-breakpoints yes
 
 layout split
 # @panic
-b print.panic
+b print.panicFn

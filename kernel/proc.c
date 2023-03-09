@@ -585,7 +585,6 @@ wakeup(void *chan)
     }
   }
 }
-#endif
 
 // Kill the process with the given pid.
 // The victim won't exit until it tries to return
@@ -610,6 +609,7 @@ kill(int pid)
   }
   return -1;
 }
+#endif
 
 void
 setkilled(struct proc *p)
