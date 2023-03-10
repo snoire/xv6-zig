@@ -3,6 +3,7 @@ const c = @import("c.zig");
 const kernel = @import("xv6.zig");
 const proc = @import("proc.zig");
 const print = kernel.print;
+const copyinstr = PageTable.copyinstr;
 const Proc = c.Proc;
 const PageTable = Proc.PageTable;
 
@@ -15,7 +16,7 @@ export fn fetchaddr(addr: usize, ip: *usize) c_int {
         return -1;
     }
 
-    if (copyin(p.pagetable.?, @ptrCast([*:0]u8, ip), addr, @sizeOf(@TypeOf(ip.*))) != 0) {
+    if (copyin(p.pagetable, @ptrCast([*:0]u8, ip), addr, @sizeOf(@TypeOf(ip.*))) != 0) {
         return -1;
     }
 
@@ -57,19 +58,11 @@ export fn argstr(n: c_int, buf: [*:0]u8, max: usize) c_int {
     return fetchstr(addr, buf, max);
 }
 
-/// Copy a null-terminated string from user to kernel.
-/// Copy bytes to dst from virtual address srcva in a given page table,
-/// until a '\0', or max.
-/// Return 0 on success, -1 on error.
-extern fn copyinstr(pagetable: PageTable, dst: [*:0]u8, srcva: usize, max: usize) c_int;
-
 /// Fetch the nul-terminated string at addr from the current process.
 /// Returns length of string, not including nul, or -1 for error.
 export fn fetchstr(addr: usize, buf: [*:0]u8, max: usize) c_int {
     var p: *Proc = myproc().?;
-    if (copyinstr(p.pagetable.?, buf, addr, max) != 0) {
-        return -1;
-    }
+    copyinstr(p.pagetable, buf[0..max], .{ .addr = addr }) catch return -1;
     return @intCast(c_int, std.mem.len(buf));
 }
 

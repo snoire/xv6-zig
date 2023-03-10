@@ -4,6 +4,7 @@ const gpr = xv6.register.gpr;
 const c = @import("c.zig");
 const SpinLock = @import("SpinLock.zig");
 const vm = xv6.vm;
+const PageTable = vm.PageTable;
 const Address = vm.Address;
 const kalloc = xv6.kalloc;
 const print = xv6.print;
@@ -27,20 +28,6 @@ var pid_lock: SpinLock = SpinLock.init("nextpid");
 /// must be acquired before any p->lock.
 var wait_lock: c.SpinLock = undefined; // TODO
 // var wait_lock: SpinLock = SpinLock.init("wait_lock");
-
-/// Allocate a page for each process's kernel stack.
-/// Map it high in memory, followed by an invalid
-/// guard page.
-pub fn mapstacks(pagetable: Address) void {
-    for (proc, 1..) |_, i| {
-        var pgtbl = Address{ .page = kalloc.kalloc().? };
-
-        vm.kvmmap(pagetable, TRAMPOLINE - (i * 2 * PGSIZE), pgtbl.interger, PGSIZE, .{
-            .readable = true,
-            .writable = true,
-        });
-    }
-}
 
 /// initialize the proc table.
 pub fn init() void {
@@ -107,7 +94,7 @@ fn allocproc() ?*c.Proc {
     p.trapframe = @ptrCast(*c.TrapFrame, kalloc.kalloc().?);
 
     // An empty user page table.
-    p.pagetable = proc_pagetable(p).?;
+    p.pagetable = proc_pagetable(p);
 
     // Set up new context to start executing at forkret,
     // which returns to user space.
@@ -118,33 +105,29 @@ fn allocproc() ?*c.Proc {
     return p;
 }
 
-// extern fn proc_pagetable(p: *c.Proc) ?Address.PageTable;
-
 /// Create a user page table for a given process, with no user memory,
 /// but with trampoline and trapframe pages.
-export fn proc_pagetable(p: *c.Proc) ?Address.PageTable {
+export fn proc_pagetable(p: *c.Proc) PageTable {
     // An empty page table.
-    var pagetable = vm.uvmcreate();
+    var pagetable = PageTable.create();
 
     // map the trampoline code (for system call return)
     // at the highest user virtual address.
     // only the supervisor uses it, on the way
     // to/from user space, so not PTE_U.
-    var ret = vm.mappages(pagetable, TRAMPOLINE, PGSIZE, @ptrToInt(&trampoline), .{
+    pagetable.mappages(.{ .addr = TRAMPOLINE }, PGSIZE, .{ .addr = @ptrToInt(&trampoline) }, .{
         .readable = true,
         .executable = true,
     });
-    if (ret < 0) @panic("procPagetable");
 
     // map the trapframe page just below the trampoline page, for
     // trampoline.S.
-    ret = vm.mappages(pagetable, TRAPFRAME, PGSIZE, @ptrToInt(p.trapframe), .{
+    pagetable.mappages(.{ .addr = TRAPFRAME }, PGSIZE, .{ .addr = @ptrToInt(p.trapframe) }, .{
         .readable = true,
         .writable = true,
     });
-    if (ret < 0) @panic("procPagetable");
 
-    return pagetable.pagetable;
+    return pagetable;
 }
 
 /// free a proc structure and the data hanging from it,
@@ -156,9 +139,9 @@ fn freeproc(p: *c.Proc) void {
         p.trapframe = null;
     }
 
-    if (p.pagetable != null) {
-        proc_freepagetable(.{ .pagetable = p.pagetable.? }, p.sz);
-        p.pagetable = null;
+    if (p.pagetable.ptes != null) {
+        proc_freepagetable(p.pagetable, p.sz);
+        p.pagetable.ptes = null;
     }
     p.sz = 0;
     p.pid = 0;
@@ -172,10 +155,10 @@ fn freeproc(p: *c.Proc) void {
 
 /// Free a process's page table, and free the
 /// physical memory it refers to.
-export fn proc_freepagetable(pagetable: Address, sz: usize) void {
-    vm.uvmunmap(pagetable, .{ .interger = TRAMPOLINE }, 1, false);
-    vm.uvmunmap(pagetable, .{ .interger = TRAPFRAME }, 1, false);
-    vm.uvmfree(pagetable, sz);
+export fn proc_freepagetable(pagetable: PageTable, sz: usize) void {
+    pagetable.unmap(.{ .addr = TRAMPOLINE }, 1, false);
+    pagetable.unmap(.{ .addr = TRAPFRAME }, 1, false);
+    pagetable.free(sz);
 }
 
 /// a user program that calls exec("/init")
@@ -201,7 +184,7 @@ pub fn userinit() void {
 
     // allocate one user page and copy initcode's instructions
     // and data into it.
-    vm.uvmfirst(Address{ .pagetable = p.pagetable.? }, &initcode);
+    p.pagetable.first(&initcode);
     p.sz = PGSIZE;
 
     // prepare for the very first "return" from kernel to user.
@@ -222,12 +205,12 @@ export fn growproc(n: c_int) c_int {
     var sz = p.sz;
 
     if (n > 0) {
-        sz = vm.uvmalloc(.{ .pagetable = p.pagetable.? }, sz, sz + @intCast(usize, n), .{
+        sz = p.pagetable.uvmalloc(sz, sz + @intCast(usize, n), .{
             .writable = true,
         });
         if (sz < 0) @panic("growproc");
     } else {
-        sz = vm.uvmdealloc(.{ .pagetable = p.pagetable.? }, sz, sz + @intCast(usize, n));
+        sz = p.pagetable.dealloc(sz, sz + @intCast(usize, n));
     }
 
     p.sz = sz;
@@ -242,11 +225,7 @@ export fn fork() c_int {
     var np = allocproc().?;
 
     // Copy user memory from parent to child.
-    vm.uvmcopy(
-        .{ .pagetable = p.pagetable.? },
-        .{ .pagetable = np.pagetable.? },
-        p.sz,
-    );
+    p.pagetable.copy(np.pagetable, p.sz);
 
     np.sz = p.sz;
 
@@ -334,8 +313,6 @@ export fn exit(status: c_int) void {
     @panic("zombie exit");
 }
 
-// extern fn freeproc(p: *c.Proc) void;
-
 /// Wait for a child process to exit and return its pid.
 /// Return -1 if this process has no children.
 export fn wait(addr: usize) c_int {
@@ -358,9 +335,8 @@ export fn wait(addr: usize) c_int {
             if (pp.state != .zombie) continue;
             // Found one.
             var pid = pp.pid;
-            var ret = vm.copyout(
-                .{ .pagetable = p.pagetable.? },
-                .{ .interger = addr },
+            var ret = p.pagetable.copyout(
+                .{ .addr = addr },
                 @ptrCast([*]const u8, &pp.xstate),
                 @sizeOf(c_int),
             );
@@ -550,9 +526,9 @@ export fn killed(p: *c.Proc) c_int {
 export fn either_copyout(user_dst: bool, dst: Address, src: [*]const u8, len: usize) c_int {
     var p = myproc().?;
     if (user_dst) {
-        return vm.copyout(.{ .pagetable = p.pagetable.? }, dst, src, len);
+        return p.pagetable.copyout(dst.vir_addr, src, len);
     } else {
-        std.mem.copy(u8, dst.buffer[0..len], src[0..len]);
+        std.mem.copy(u8, dst.phy_addr.buffer[0..len], src[0..len]);
         return 0;
     }
 }
@@ -560,12 +536,12 @@ export fn either_copyout(user_dst: bool, dst: Address, src: [*]const u8, len: us
 /// Copy from either a user address, or kernel address,
 /// depending on usr_src.
 /// Returns 0 on success, -1 on error.
-export fn either_copyin(dst: Address, user_src: bool, src: Address, len: usize) c_int {
+export fn either_copyin(dst: [*]u8, user_src: bool, src: Address, len: usize) c_int {
     var p = myproc().?;
     if (user_src) {
-        return vm.copyin(.{ .pagetable = p.pagetable.? }, dst.buffer, src, len);
+        return p.pagetable.copyin(dst, src.vir_addr, len);
     } else {
-        std.mem.copy(u8, dst.buffer[0..len], src.buffer[0..len]);
+        std.mem.copy(u8, dst[0..len], src.phy_addr.buffer[0..len]);
         return 0;
     }
 }

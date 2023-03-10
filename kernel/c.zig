@@ -251,7 +251,7 @@ pub const TrapFrame = extern struct {
 
 /// Per-process state
 pub const Proc = extern struct {
-    pub const PageTable = xv6.vm.Address.PageTable; // 512 PTEs
+    pub const PageTable = xv6.vm.PageTable; // 512 PTEs
 
     lock: SpinLock,
 
@@ -277,7 +277,7 @@ pub const Proc = extern struct {
     /// Size of process memory (bytes)
     sz: usize,
     /// User page table
-    pagetable: ?PageTable,
+    pagetable: PageTable,
     /// data page for trampoline.S
     trapframe: ?*TrapFrame,
     /// swtch() here to run process
