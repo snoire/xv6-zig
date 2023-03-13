@@ -69,7 +69,7 @@ pub const PhyAddr = packed union {
 
     // converts to other types
     addr: usize,
-    page: Page,
+    page: *align(PGSIZE) Page,
     buffer: [*]u8,
 
     const Physical = packed struct {
@@ -93,7 +93,7 @@ pub const PhyAddr = packed union {
 
     pub fn create() Self {
         return .{
-            .page = kalloc.kalloc().?,
+            .page = kalloc.kalloc(),
         };
     }
 };
@@ -102,14 +102,14 @@ pub const PageTable = packed union {
     ptes: ?*[512]Pte,
 
     // converts to other types
-    page: Page,
+    page: *align(PGSIZE) Page,
     phy: PhyAddr.Physical,
 
     const Self = @This();
 
     pub fn create() Self {
         return .{
-            .page = kalloc.kalloc().?,
+            .page = kalloc.kalloc(),
         };
     }
 

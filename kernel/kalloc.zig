@@ -5,15 +5,16 @@
 const std = @import("std");
 const c = @import("c.zig");
 const SpinLock = @import("SpinLock.zig");
-pub const Page = *align(PGSIZE) [PGSIZE]u8;
 
 const PGSIZE = 4096;
+pub const Page = [PGSIZE]u8;
+
 pub const KERNBASE = 0x80000000;
 pub const PHYSTOP = KERNBASE + 128 * 1024 * 1024;
 
 /// first address after kernel.
 /// defined by kernel.ld.
-extern const end: u1; // do not use u0..
+extern const heap_start: u8;
 
 const Run = extern struct {
     next: ?*align(PGSIZE) Run,
@@ -23,26 +24,28 @@ var lock: SpinLock = SpinLock.init("kmem");
 var freelist: ?*align(PGSIZE) Run = null;
 
 pub fn init() void {
-    var addr = std.mem.alignForward(@ptrToInt(&end), PGSIZE);
+    const heap_addr = @ptrToInt(&heap_start);
+    const heap = @intToPtr([*]align(PGSIZE) Page, heap_addr);
+    const pages = heap[0 .. (PHYSTOP - heap_addr) / PGSIZE];
 
-    while (addr <= PHYSTOP - PGSIZE) : (addr += PGSIZE) {
-        kfree(@intToPtr(Page, addr));
+    for (pages) |*page| {
+        kfree(page);
     }
 }
 
 /// Allocate one 4096-byte page of physical memory.
 /// Returns a pointer that the kernel can use.
-/// Returns null if the memory cannot be allocated.
-pub export fn kalloc() ?Page {
-    var page: Page = blk: {
+/// Panic if the memory cannot be allocated.
+pub export fn kalloc() *align(PGSIZE) Page {
+    var page: *align(PGSIZE) Page = blk: {
         lock.acquire();
         defer lock.release();
 
         if (freelist) |r| {
             freelist = r.next;
-            break :blk @ptrCast(Page, r);
+            break :blk @ptrCast(*align(PGSIZE) Page, r);
         } else {
-            return null;
+            @panic("OOM!");
         }
     };
 
@@ -55,9 +58,9 @@ pub export fn kalloc() ?Page {
 /// which normally should have been returned by a
 /// call to kalloc().  (The exception is when
 /// initializing the allocator; see kinit above.)
-pub export fn kfree(page: Page) void {
+pub export fn kfree(page: *align(PGSIZE) Page) void {
     const addr = @ptrToInt(page);
-    if (addr < @ptrToInt(&end) or addr >= PHYSTOP) @panic("kfree");
+    if (addr < @ptrToInt(&heap_start) or addr >= PHYSTOP) @panic("kfree");
 
     // Fill with junk to catch dangling refs.
     std.mem.set(u8, page, 1);

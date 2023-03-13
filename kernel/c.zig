@@ -1,5 +1,6 @@
 const fs = @import("fs.zig");
 const xv6 = @import("xv6.zig");
+const PGSIZE = 4096;
 
 /// Mutual exclusion lock.
 pub const SpinLock = extern struct {
@@ -279,7 +280,7 @@ pub const Proc = extern struct {
     /// User page table
     pagetable: PageTable,
     /// data page for trampoline.S
-    trapframe: ?*TrapFrame,
+    trapframe: ?*align(PGSIZE) TrapFrame,
     /// swtch() here to run process
     context: Context,
     /// Open files

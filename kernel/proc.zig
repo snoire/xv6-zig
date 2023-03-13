@@ -91,7 +91,7 @@ fn allocproc() ?*c.Proc {
     p.state = .used;
 
     // Allocate a trapframe page.
-    p.trapframe = @ptrCast(*c.TrapFrame, kalloc.kalloc().?);
+    p.trapframe = @ptrCast(*c.TrapFrame, kalloc.kalloc());
 
     // An empty user page table.
     p.pagetable = proc_pagetable(p);
@@ -135,7 +135,7 @@ export fn proc_pagetable(p: *c.Proc) PageTable {
 /// p->lock must be held.
 fn freeproc(p: *c.Proc) void {
     if (p.trapframe != null) {
-        kalloc.kfree(@ptrCast(kalloc.Page, @alignCast(PGSIZE, p.trapframe.?)));
+        kalloc.kfree(@ptrCast(*align(PGSIZE) kalloc.Page, p.trapframe.?));
         p.trapframe = null;
     }
 

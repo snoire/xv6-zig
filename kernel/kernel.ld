@@ -42,4 +42,6 @@ SECTIONS
   }
 
   PROVIDE(end = .);
+  . = ALIGN(0x1000);
+  PROVIDE(heap_start = .);
 }
