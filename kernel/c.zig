@@ -266,7 +266,7 @@ pub const Proc = extern struct {
     /// Exit status to be returned to parent's wait
     xstate: c_int,
     /// Process ID
-    pid: c_int,
+    pid: u32,
 
     // wait_lock must be held when using this:
     /// Parent process

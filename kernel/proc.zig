@@ -19,7 +19,7 @@ var cpus: [xv6.NCPU]c.Cpu = undefined;
 var proc: [xv6.NPROC]c.Proc = undefined;
 var initproc: *c.Proc = undefined;
 
-var nextpid: c_int = 1;
+var nextpid: u32 = 1;
 var pid_lock: SpinLock = SpinLock.init("nextpid");
 
 /// helps ensure that wakeups of wait()ing
@@ -61,7 +61,7 @@ pub export fn myproc() ?*c.Proc {
     return mycpu().proc;
 }
 
-fn allocpid() c_int {
+fn allocpid() u32 {
     pid_lock.acquire();
     defer pid_lock.release();
 
@@ -200,7 +200,7 @@ pub fn userinit() void {
 
 /// Grow or shrink user memory by n bytes.
 /// Return 0 on success, -1 on failure.
-export fn growproc(n: c_int) c_int {
+pub fn growproc(n: i32) c_int {
     var p = myproc().?;
     var sz = p.sz;
 
@@ -219,7 +219,7 @@ export fn growproc(n: c_int) c_int {
 
 // Create a new process, copying the parent.
 // Sets up child kernel stack to return as if from fork() system call.
-export fn fork() c_int {
+pub fn fork() u32 {
     // Allocate process.
     var p = myproc().?;
     var np = allocproc().?;
@@ -275,7 +275,7 @@ fn reparent(p: *c.Proc) void {
 /// Exit the current process.  Does not return.
 /// An exited process remains in the zombie state
 /// until its parent calls wait().
-export fn exit(status: c_int) void {
+pub export fn exit(status: c_int) void {
     var p = myproc().?;
     if (p == initproc) @panic("init exiting");
 
@@ -315,7 +315,7 @@ export fn exit(status: c_int) void {
 
 /// Wait for a child process to exit and return its pid.
 /// Return -1 if this process has no children.
-export fn wait(addr: usize) c_int {
+pub fn wait(addr: usize) u32 {
     var p = myproc().?;
 
     c.acquire(&wait_lock);
@@ -341,14 +341,14 @@ export fn wait(addr: usize) c_int {
                 @sizeOf(c_int),
             );
 
-            if (addr > 0 and ret != 0) return -1;
+            if (addr > 0 and ret != 0) @panic("wait");
 
             freeproc(pp);
             return pid;
         } else {
             // No point waiting if we don't have any children.
             if (!havekids or killed(p) != 0) {
-                return -1;
+                @panic("have no children");
             }
 
             // Wait for a child to exit.
@@ -445,7 +445,7 @@ fn forkret() void {
 
 /// Atomically release lock and sleep on chan.
 /// Reacquires lock when awakened.
-export fn sleep(chan: *anyopaque, lk: *c.SpinLock) void {
+pub export fn sleep(chan: *anyopaque, lk: *c.SpinLock) void {
 
     // Must acquire p->lock in order to
     // change p->state and then call sched.
@@ -488,7 +488,7 @@ export fn wakeup(chan: *anyopaque) void {
 /// Kill the process with the given pid.
 /// The victim won't exit until it tries to return
 /// to user space (see usertrap() in trap.c).
-export fn kill(pid: c_int) c_int {
+pub export fn kill(pid: u32) c_int {
     for (&proc) |*p| {
         c.acquire(&p.lock);
         defer c.release(&p.lock);
@@ -512,7 +512,7 @@ export fn setkilled(p: *c.Proc) void {
     p.killed = 1;
 }
 
-export fn killed(p: *c.Proc) c_int {
+pub export fn killed(p: *c.Proc) c_int {
     c.acquire(&p.lock);
     defer c.release(&p.lock);
 

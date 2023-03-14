@@ -6,8 +6,7 @@ const print = kernel.print;
 const copyinstr = PageTable.copyinstr;
 const Proc = c.Proc;
 const PageTable = Proc.PageTable;
-
-extern fn copyin(pagetable: PageTable, dst: [*:0]u8, srcva: usize, len: usize) c_int;
+const copyin = @import("vm.zig").copyin;
 
 /// Fetch the uint64 at addr from the current process.
 export fn fetchaddr(addr: usize, ip: *usize) c_int {
@@ -16,11 +15,7 @@ export fn fetchaddr(addr: usize, ip: *usize) c_int {
         return -1;
     }
 
-    if (copyin(p.pagetable, @ptrCast([*:0]u8, ip), addr, @sizeOf(@TypeOf(ip.*))) != 0) {
-        return -1;
-    }
-
-    return 0;
+    return p.pagetable.copyin(@ptrCast([*]u8, ip), .{ .addr = addr }, @sizeOf(@TypeOf(ip.*)));
 }
 
 fn argraw(n: u8) usize {
@@ -38,14 +33,14 @@ fn argraw(n: u8) usize {
 }
 
 /// Fetch the nth 32-bit system call argument.
-export fn argint(n: c_int, ip: *c_int) void {
-    ip.* = @intCast(c_int, argraw(@intCast(u8, n)));
+pub export fn argint(n: u8, ip: *u32) void {
+    ip.* = @intCast(u32, argraw(n));
 }
 
 /// Retrieve an argument as a pointer.
 /// Doesn't check for legality, since
 /// copyin/copyout will do that.
-export fn argaddr(n: c_int, ip: *usize) void {
+pub export fn argaddr(n: c_int, ip: *usize) void {
     ip.* = argraw(@intCast(u8, n));
 }
 
@@ -90,27 +85,23 @@ pub const SYS = enum(u8) {
     close = 21,
 };
 
-extern fn sys_fork() usize;
-extern fn sys_exit() usize;
-extern fn sys_wait() usize;
-extern fn sys_pipe() usize;
-extern fn sys_read() usize;
-extern fn sys_kill() usize;
-extern fn sys_exec() usize;
-extern fn sys_fstat() usize;
-extern fn sys_chdir() usize;
-extern fn sys_dup() usize;
-extern fn sys_getpid() usize;
-extern fn sys_sbrk() usize;
-extern fn sys_sleep() usize;
-extern fn sys_uptime() usize;
-extern fn sys_open() usize;
-extern fn sys_write() usize;
-extern fn sys_mknod() usize;
-extern fn sys_unlink() usize;
-extern fn sys_link() usize;
-extern fn sys_mkdir() usize;
-extern fn sys_close() usize;
+const sys = struct {
+    usingnamespace @import("syscall/proc.zig");
+
+    extern fn sys_pipe() usize;
+    extern fn sys_read() usize;
+    extern fn sys_exec() usize;
+    extern fn sys_fstat() usize;
+    extern fn sys_chdir() usize;
+    extern fn sys_dup() usize;
+    extern fn sys_open() usize;
+    extern fn sys_write() usize;
+    extern fn sys_mknod() usize;
+    extern fn sys_unlink() usize;
+    extern fn sys_link() usize;
+    extern fn sys_mkdir() usize;
+    extern fn sys_close() usize;
+};
 
 /// An array mapping syscall numbers from `SYS`
 /// to the function that handles the system call.
@@ -120,7 +111,10 @@ const syscalls = blk: {
     // Note that syscalls[0] doesn't contain any function pointer since syscall starts from 1.
     var sys_calls: [sys_fields.len + 1]*const fn () callconv(.C) usize = undefined;
     for (sys_fields) |call| {
-        sys_calls[call.value] = @field(@This(), "sys_" ++ call.name);
+        sys_calls[call.value] = if (@hasDecl(sys, call.name))
+            @field(sys, call.name)
+        else
+            @field(sys, "sys_" ++ call.name);
     }
 
     break :blk sys_calls;
