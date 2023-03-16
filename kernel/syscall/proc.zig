@@ -33,8 +33,8 @@ extern var tickslock: c.SpinLock;
 
 pub fn sleep() callconv(.C) usize {
     var n = syscall.argint(0);
-    c.acquire(&tickslock);
-    defer c.release(&tickslock);
+    tickslock.acquire();
+    defer tickslock.release();
 
     var ticks0 = ticks;
 
@@ -51,8 +51,8 @@ pub fn kill() callconv(.C) usize {
 }
 
 pub fn uptime() callconv(.C) usize {
-    c.acquire(&tickslock);
-    defer c.release(&tickslock);
+    tickslock.acquire();
+    defer tickslock.release();
 
     var xticks = ticks;
     return xticks;

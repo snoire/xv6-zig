@@ -1,6 +1,7 @@
 const fs = @import("fs.zig");
 const xv6 = @import("xv6.zig");
 const PGSIZE = 4096;
+const c = @This();
 
 /// Mutual exclusion lock.
 pub const SpinLock = extern struct {
@@ -12,11 +13,17 @@ pub const SpinLock = extern struct {
     name: [*:0]u8,
     /// The cpu holding the lock.
     cpu: *Cpu,
+
+    pub const init = c.initlock;
+    pub const acquire = c.acquire;
+    pub const release = c.release;
+    pub const holding = c.holding;
 };
+
+pub extern fn initlock(lk: *SpinLock, name: [*:0]const u8) void;
 pub extern fn acquire(lock: *SpinLock) void;
 pub extern fn release(lock: *SpinLock) void;
 pub extern fn holding(lock: *SpinLock) bool;
-pub extern fn initlock(lk: *SpinLock, name: [*:0]const u8) void;
 
 /// Long-term locks for processes
 pub const SleepLock = extern struct {
@@ -117,6 +124,9 @@ pub const Inode = extern struct {
     nlink: c_short,
     size: c_uint,
     addrs: [fs.NDIRECT + 1 + 1]c_uint,
+
+    pub const dup = idup;
+    pub const put = iput;
 };
 
 // fs.c
@@ -186,7 +196,10 @@ const Context = extern struct {
     s9: usize,
     s10: usize,
     s11: usize,
+
+    pub const swtch = c.swtch;
 };
+
 pub extern fn swtch(old: *Context, new: *Context) void;
 
 /// Per-CPU state.

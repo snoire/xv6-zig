@@ -31,10 +31,10 @@ var wait_lock: c.SpinLock = undefined; // TODO
 
 /// initialize the proc table.
 pub fn init() void {
-    c.initlock(&wait_lock, "wait_lock");
+    wait_lock.init("wait_lock");
 
     for (&proc, 1..) |*p, i| {
-        c.initlock(&p.lock, "proc");
+        p.lock.init("proc");
         p.state = .unused;
         p.kstack = TRAMPOLINE - (i * 2 * PGSIZE);
     }
@@ -76,12 +76,12 @@ fn allocpid() u32 {
 /// If there are no free procs, or a memory allocation fails, return 0.
 fn allocproc() ?*c.Proc {
     var p: *c.Proc = for (&proc) |*p| {
-        c.acquire(&p.lock);
+        p.lock.acquire();
 
         if (p.state == .unused) {
             break p;
         } else {
-            c.release(&p.lock);
+            p.lock.release();
         }
     } else {
         return null;
@@ -195,7 +195,7 @@ pub fn userinit() void {
     p.cwd = namei("/");
     p.state = .runnable;
 
-    c.release(&p.lock);
+    p.lock.release();
 }
 
 /// Grow or shrink user memory by n bytes.
@@ -242,21 +242,21 @@ pub fn fork() u32 {
         }
     }
 
-    np.cwd = c.idup(p.cwd.?);
+    np.cwd = p.cwd.?.dup();
 
     std.mem.copy(u8, np.name[0..], p.name[0..]);
 
     var pid = np.pid;
 
-    c.release(&np.lock);
+    np.lock.release();
 
-    c.acquire(&wait_lock);
+    wait_lock.acquire();
     np.parent = p;
-    c.release(&wait_lock);
+    wait_lock.release();
 
-    c.acquire(&np.lock);
+    np.lock.acquire();
     np.state = .runnable;
-    c.release(&np.lock);
+    np.lock.release();
 
     return pid;
 }
@@ -283,17 +283,17 @@ pub export fn exit(status: i32) void {
     var i: usize = 0;
     while (i < p.ofile.len) : (i += 1) {
         if (p.ofile[i]) |ofile| {
-            c.fileclose(ofile);
+            ofile.close();
             p.ofile[i] = null;
         }
     }
 
     c.begin_op();
-    c.iput(p.cwd.?);
+    p.cwd.?.put();
     c.end_op();
     p.cwd = null;
 
-    c.acquire(&wait_lock);
+    wait_lock.acquire();
 
     // Give any children to init.
     reparent(p);
@@ -301,12 +301,12 @@ pub export fn exit(status: i32) void {
     // Parent might be sleeping in wait().
     wakeup(p.parent.?);
 
-    c.acquire(&p.lock);
+    p.lock.acquire();
 
     p.xstate = status;
     p.state = .zombie;
 
-    c.release(&wait_lock);
+    wait_lock.release();
 
     // Jump into the scheduler, never to return.
     sched();
@@ -318,8 +318,8 @@ pub export fn exit(status: i32) void {
 pub fn wait(addr: usize) u32 {
     var p = myproc().?;
 
-    c.acquire(&wait_lock);
-    defer c.release(&wait_lock);
+    wait_lock.acquire();
+    defer wait_lock.release();
 
     while (true) {
         var havekids: bool = false;
@@ -328,8 +328,8 @@ pub fn wait(addr: usize) u32 {
             if (pp.parent != p) continue;
 
             // make sure the child isn't still in exit() or swtch().
-            c.acquire(&pp.lock);
-            defer c.release(&pp.lock);
+            pp.lock.acquire();
+            defer pp.lock.release();
             havekids = true;
 
             if (pp.state != .zombie) continue;
@@ -373,8 +373,8 @@ pub fn scheduler() void {
         SpinLock.intrOn();
 
         for (&proc) |*p| {
-            c.acquire(&p.lock);
-            defer c.release(&p.lock);
+            p.lock.acquire();
+            defer p.lock.release();
 
             if (p.state == .runnable) {
                 // Switch to chosen process.  It is the process's job
@@ -382,7 +382,7 @@ pub fn scheduler() void {
                 // before jumping back to us.
                 p.state = .running;
                 cpu.proc = p;
-                c.swtch(&cpu.context, &p.context);
+                cpu.context.swtch(&p.context);
 
                 // Process is done running for now.
                 // It should have changed its p->state before coming back.
@@ -402,21 +402,21 @@ pub fn scheduler() void {
 export fn sched() void {
     var p = myproc().?;
 
-    if (!c.holding(&p.lock)) @panic("sched p->lock");
+    if (!p.lock.holding()) @panic("sched p->lock");
     if (mycpu().noff != 1) @panic("sched locks");
     if (p.state == .running) @panic("sched running");
     if (SpinLock.intrGet()) @panic("sched interruptible");
 
     var intena = mycpu().intena;
-    c.swtch(&p.context, &mycpu().context);
+    p.context.swtch(&mycpu().context);
     mycpu().intena = intena;
 }
 
 /// Give up the CPU for one scheduling round.
 export fn yield() void {
     var p = myproc().?;
-    c.acquire(&p.lock);
-    defer c.release(&p.lock);
+    p.lock.acquire();
+    defer p.lock.release();
 
     p.state = .runnable;
     sched();
@@ -430,7 +430,7 @@ fn forkret() void {
         var first: bool = true;
     };
 
-    c.release(&myproc().?.lock);
+    myproc().?.lock.release();
 
     if (S.first) {
         S.first = false;
@@ -454,8 +454,8 @@ pub export fn sleep(chan: *anyopaque, lk: *c.SpinLock) void {
     // (wakeup locks p->lock),
     // so it's okay to release lk.
     var p = myproc().?;
-    c.acquire(&p.lock);
-    c.release(lk);
+    p.lock.acquire();
+    lk.release();
 
     // Go to sleep.
     p.chan = chan;
@@ -466,8 +466,8 @@ pub export fn sleep(chan: *anyopaque, lk: *c.SpinLock) void {
     // Tidy up.
     p.chan = null;
 
-    c.release(&p.lock);
-    c.acquire(lk);
+    p.lock.release();
+    lk.acquire();
 }
 
 /// Wake up all processes sleeping on chan.
@@ -476,8 +476,8 @@ export fn wakeup(chan: *anyopaque) void {
     for (&proc) |*p| {
         if (p == myproc()) continue;
 
-        c.acquire(&p.lock);
-        defer c.release(&p.lock);
+        p.lock.acquire();
+        defer p.lock.release();
 
         if (p.state == .sleeping and p.chan == chan) {
             p.state = .runnable;
@@ -490,8 +490,8 @@ export fn wakeup(chan: *anyopaque) void {
 /// to user space (see usertrap() in trap.c).
 pub export fn kill(pid: u32) c_int {
     for (&proc) |*p| {
-        c.acquire(&p.lock);
-        defer c.release(&p.lock);
+        p.lock.acquire();
+        defer p.lock.release();
 
         if (p.pid == pid) {
             p.killed = 1;
@@ -506,15 +506,15 @@ pub export fn kill(pid: u32) c_int {
 }
 
 export fn setkilled(p: *c.Proc) void {
-    c.acquire(&p.lock);
-    defer c.release(&p.lock);
+    p.lock.acquire();
+    defer p.lock.release();
 
     p.killed = 1;
 }
 
 pub export fn killed(p: *c.Proc) c_int {
-    c.acquire(&p.lock);
-    defer c.release(&p.lock);
+    p.lock.acquire();
+    defer p.lock.release();
 
     var k = p.killed;
     return k;
