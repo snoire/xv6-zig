@@ -18,7 +18,32 @@ export fn fetchaddr(addr: usize, ip: *usize) c_int {
     return p.pagetable.copyin(@ptrCast([*]u8, ip), .{ .addr = addr }, @sizeOf(@TypeOf(ip.*)));
 }
 
-fn argraw(n: u8) usize {
+fn fetchAddr(addr: usize) usize {
+    var p: *Proc = myproc().?;
+    if (addr >= p.sz or addr + @sizeOf(usize) > p.sz) {
+        @panic("fetchAddr");
+    }
+
+    var ip: usize = undefined;
+    _ = p.pagetable.copyin(@ptrCast([*]u8, &ip), .{ .addr = addr }, @sizeOf(usize));
+    return ip;
+}
+
+/// Fetch the nul-terminated string at addr from the current process.
+/// Returns length of string, not including nul, or -1 for error.
+export fn fetchstr(addr: usize, buf: [*:0]u8, max: usize) c_int {
+    var p: *Proc = myproc().?;
+    copyinstr(p.pagetable, buf[0..max], .{ .addr = addr }) catch return -1;
+    return @intCast(c_int, std.mem.len(buf));
+}
+
+fn fetchStr(addr: usize, buf: []u8) usize {
+    var p: *Proc = myproc().?;
+    p.pagetable.copyinstr(buf, .{ .addr = addr }) catch unreachable;
+    return std.mem.len(buf);
+}
+
+pub fn arg(n: u8) usize {
     var p: *Proc = myproc().?;
 
     return switch (n) {
@@ -33,32 +58,23 @@ fn argraw(n: u8) usize {
 }
 
 /// Fetch the nth 32-bit system call argument.
-pub export fn argint(n: u8, ip: *u32) void {
-    ip.* = @intCast(u32, argraw(n));
+pub fn argint(n: u8) u32 {
+    return @intCast(u32, arg(n));
 }
 
 /// Retrieve an argument as a pointer.
 /// Doesn't check for legality, since
 /// copyin/copyout will do that.
-pub export fn argaddr(n: c_int, ip: *usize) void {
-    ip.* = argraw(@intCast(u8, n));
+pub fn argaddr(n: u8) usize {
+    return arg(n);
 }
 
 /// Fetch the nth word-sized system call argument as a null-terminated string.
 /// Copies into buf, at most max.
 /// Returns string length if OK (including nul), -1 if error.
-export fn argstr(n: c_int, buf: [*:0]u8, max: usize) c_int {
-    var addr: usize = undefined;
-    argaddr(n, &addr);
-    return fetchstr(addr, buf, max);
-}
-
-/// Fetch the nul-terminated string at addr from the current process.
-/// Returns length of string, not including nul, or -1 for error.
-export fn fetchstr(addr: usize, buf: [*:0]u8, max: usize) c_int {
-    var p: *Proc = myproc().?;
-    copyinstr(p.pagetable, buf[0..max], .{ .addr = addr }) catch return -1;
-    return @intCast(c_int, std.mem.len(buf));
+fn argstr(n: u8, buf: [*:0]u8, max: usize) usize {
+    var addr = argaddr(n);
+    return fetchstr(addr, buf[0..max]);
 }
 
 pub const SYS = enum(u8) {
@@ -87,20 +103,17 @@ pub const SYS = enum(u8) {
 
 const sys = struct {
     usingnamespace @import("syscall/proc.zig");
+    usingnamespace @import("syscall/file.zig");
 
     extern fn sys_pipe() usize;
-    extern fn sys_read() usize;
     extern fn sys_exec() usize;
     extern fn sys_fstat() usize;
     extern fn sys_chdir() usize;
-    extern fn sys_dup() usize;
     extern fn sys_open() usize;
-    extern fn sys_write() usize;
     extern fn sys_mknod() usize;
     extern fn sys_unlink() usize;
     extern fn sys_link() usize;
     extern fn sys_mkdir() usize;
-    extern fn sys_close() usize;
 };
 
 /// An array mapping syscall numbers from `SYS`

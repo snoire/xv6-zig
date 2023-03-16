@@ -238,7 +238,7 @@ pub fn fork() u32 {
     // increment reference counts on open file descriptors.
     for (p.ofile, &np.ofile) |old_ofile, *new_ofile| {
         if (old_ofile) |old_file| {
-            new_ofile.* = c.filedup(old_file);
+            new_ofile.* = old_file.dup();
         }
     }
 
@@ -275,7 +275,7 @@ fn reparent(p: *c.Proc) void {
 /// Exit the current process.  Does not return.
 /// An exited process remains in the zombie state
 /// until its parent calls wait().
-pub export fn exit(status: c_int) void {
+pub export fn exit(status: i32) void {
     var p = myproc().?;
     if (p == initproc) @panic("init exiting");
 
@@ -556,6 +556,9 @@ export fn procdump() void {
     // this will take less memory on stack.
     for (&proc) |*p| {
         if (p.state == .unused) continue;
-        print("{} {s} {s}\n", .{ p.pid, @tagName(p.state), p.name });
+        print(
+            "{} {s} {s}\n",
+            .{ p.pid, @tagName(p.state), std.mem.sliceTo(&p.name, 0) },
+        );
     }
 }

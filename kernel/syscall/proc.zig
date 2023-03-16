@@ -3,9 +3,7 @@ const syscall = @import("../syscall.zig");
 const proc = @import("../proc.zig");
 
 pub fn exit() callconv(.C) usize {
-    var n: u32 = undefined;
-    syscall.argint(0, &n);
-    proc.exit(@intCast(c_int, n));
+    proc.exit(@intCast(i32, syscall.arg(0)));
     return 0;
 }
 
@@ -18,14 +16,12 @@ pub fn fork() callconv(.C) usize {
 }
 
 pub fn wait() callconv(.C) usize {
-    var p: usize = undefined;
-    syscall.argaddr(0, &p);
+    var p: usize = syscall.argaddr(0);
     return proc.wait(p);
 }
 
 pub fn sbrk() callconv(.C) usize {
-    var n: u32 = undefined;
-    syscall.argint(0, &n);
+    var n = syscall.argint(0);
     var addr = proc.myproc().?.sz;
     if (proc.growproc(@intCast(i32, n)) == -1) return @truncate(usize, -1);
     return addr;
@@ -36,9 +32,7 @@ extern var ticks: u32;
 extern var tickslock: c.SpinLock;
 
 pub fn sleep() callconv(.C) usize {
-    var n: u32 = undefined;
-    syscall.argint(0, &n);
-
+    var n = syscall.argint(0);
     c.acquire(&tickslock);
     defer c.release(&tickslock);
 
@@ -52,9 +46,7 @@ pub fn sleep() callconv(.C) usize {
 }
 
 pub fn kill() callconv(.C) usize {
-    var pid: u32 = undefined;
-    syscall.argint(0, &pid);
-
+    var pid = syscall.argint(0);
     return @intCast(usize, proc.kill(pid));
 }
 

@@ -51,6 +51,7 @@ fdalloc(struct file *f)
   return -1;
 }
 
+#if 0
 uint64
 sys_dup(void)
 {
@@ -106,6 +107,7 @@ sys_close(void)
   fileclose(f);
   return 0;
 }
+#endif
 
 uint64
 sys_fstat(void)

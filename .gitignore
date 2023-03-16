@@ -17,6 +17,7 @@ user/usys.S
 zig-cache/
 zig-out/
 .cache/
+mkfs/mkfs
 compile_commands.json
 
 kernel/start.c

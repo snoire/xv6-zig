@@ -7,6 +7,7 @@
 #include "syscall.h"
 #include "defs.h"
 
+#if 0
 // Fetch the uint64 at addr from the current process.
 int
 fetchaddr(uint64 addr, uint64 *ip)
@@ -29,6 +30,7 @@ fetchstr(uint64 addr, char *buf, int max)
     return -1;
   return strlen(buf);
 }
+#endif
 
 static uint64
 argraw(int n)
@@ -78,6 +80,7 @@ argstr(int n, char *buf, int max)
   argaddr(n, &addr);
   return fetchstr(addr, buf, max);
 }
+#if 0
 
 // Prototypes for the functions that handle system calls.
 extern uint64 sys_fork(void);
@@ -145,3 +148,4 @@ syscall(void)
     p->trapframe->a0 = -1;
   }
 }
+#endif

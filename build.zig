@@ -50,7 +50,7 @@ const kfiles = .{
     // "vm.c",
     // "proc.c",
     "trap.c",
-    // "syscall.c",
+    "syscall.c",
     // "sysproc.c",
     "bio.c",
     "fs.c",
