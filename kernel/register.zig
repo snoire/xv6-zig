@@ -103,15 +103,22 @@ pub const csr = struct {
         mpie: bool = false,
         spp: bool = false,
         vs: u2 = 0,
-        mpp: Mode = .user,
+        mpp: mpp = .user,
 
         _: u51 = 0,
 
-        const Mode = enum(u2) {
+        pub const mpp = enum(u2) {
             user = 0b00,
             supervisor = 0b01,
             hypervisor = 0b10,
             machine = 0b11,
+
+            pub fn set(self: @This()) void {
+                // reset to 0
+                csr.mstatus.reset(.{ .mpp = .machine });
+                // set to `self`
+                csr.mstatus.set(.{ .mpp = self });
+            }
         };
     };
 

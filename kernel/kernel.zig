@@ -30,10 +30,9 @@ export fn _entry() linksection(".kernel_entry") callconv(.Naked) noreturn {
     unreachable;
 }
 
-export fn start() callconv(.C) void {
+export fn start() void {
     // set M Previous Privilege mode to Supervisor, for mret.
-    csr.mstatus.reset(.{ .mpp = .machine });
-    csr.mstatus.set(.{ .mpp = .supervisor });
+    csr.mstatus.mpp.set(.supervisor);
 
     // set M Exception Program Counter to main, for mret.
     // requires code_model = .medium
