@@ -107,7 +107,6 @@ sys_close(void)
   fileclose(f);
   return 0;
 }
-#endif
 
 uint64
 sys_fstat(void)
@@ -120,6 +119,7 @@ sys_fstat(void)
     return -1;
   return filestat(f, st);
 }
+#endif
 
 // Create the path new as a link to the same inode as old.
 uint64

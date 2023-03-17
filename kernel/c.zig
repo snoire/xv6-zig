@@ -88,10 +88,11 @@ pub const File = extern struct {
     /// FD_DEVICE
     major: c_short,
 
+    pub const dup = filedup;
     pub const read = fileread;
     pub const write = filewrite;
     pub const close = fileclose;
-    pub const dup = filedup;
+    pub const stat = filestat;
 };
 
 // file.c
@@ -99,6 +100,7 @@ pub extern fn filedup(file: *File) *File;
 pub extern fn fileread(file: *File, addr: usize, n: u32) usize;
 pub extern fn filewrite(file: *File, addr: usize, n: u32) usize;
 pub extern fn fileclose(file: *File) void;
+pub extern fn filestat(file: *File, addr: usize) usize;
 
 // log.c
 pub extern fn begin_op() void;

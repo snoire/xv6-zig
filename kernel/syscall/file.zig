@@ -51,8 +51,14 @@ pub fn write() callconv(.C) usize {
 
 pub fn close() callconv(.C) usize {
     var fd = syscall.argint(0);
-    var f = argfile(0);
+    var f = argfile(0); // user pointer to struct stat
     proc.myproc().?.ofile[fd] = null;
     f.close();
     return 0;
+}
+
+pub fn fstat() callconv(.C) usize {
+    var f = argfile(0);
+    var st = syscall.argaddr(1);
+    return f.stat(st);
 }

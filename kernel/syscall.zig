@@ -135,7 +135,7 @@ const syscalls = blk: {
 
 const myproc = proc.myproc;
 
-pub export fn syscall() void {
+export fn syscall() void {
     var p: *Proc = myproc().?;
     var num = p.trapframe.?.a7;
 
