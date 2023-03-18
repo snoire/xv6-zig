@@ -355,7 +355,7 @@ pub const PageTable = packed union {
     /// Copy a null-terminated string from user to kernel.
     /// Copy bytes to dst from virtual address srcva in a given page table,
     /// until a '\0', or return an error if the end is reached.
-    pub fn copyinstr(pagetable: PageTable, dst: []u8, srcva: VirAddr) !void {
+    pub fn copyinstr(pagetable: PageTable, dst: []u8, srcva: VirAddr) ![:0]const u8 {
         var n: usize = 0;
         var src = srcva;
         var got_null: bool = false;
@@ -376,9 +376,9 @@ pub const PageTable = packed union {
             };
 
             std.mem.copy(u8, dst[n .. n + nbytes], data[0..nbytes]);
-            if (got_null) return;
-
             n += nbytes;
+            if (got_null) return dst[0 .. n - 1 :0];
+
             src.addr = src.roundDown().addr + PGSIZE;
         } else {
             return error.InvalidString;

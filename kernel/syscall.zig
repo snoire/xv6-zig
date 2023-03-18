@@ -3,7 +3,6 @@ const c = @import("c.zig");
 const kernel = @import("xv6.zig");
 const proc = @import("proc.zig");
 const print = kernel.print;
-const copyinstr = PageTable.copyinstr;
 const Proc = c.Proc;
 const PageTable = Proc.PageTable;
 const copyin = @import("vm.zig").copyin;
@@ -33,14 +32,13 @@ fn fetchAddr(addr: usize) usize {
 /// Returns length of string, not including nul, or -1 for error.
 export fn fetchstr(addr: usize, buf: [*:0]u8, max: usize) c_int {
     var p: *Proc = myproc().?;
-    copyinstr(p.pagetable, buf[0..max], .{ .addr = addr }) catch return -1;
-    return @intCast(c_int, std.mem.len(buf));
+    var str = p.pagetable.copyinstr(buf[0..max], .{ .addr = addr }) catch return -1;
+    return @intCast(c_int, str.len);
 }
 
-fn fetchStr(addr: usize, buf: []u8) usize {
+fn fetchStr(addr: usize, buf: []u8) [:0]const u8 {
     var p: *Proc = myproc().?;
-    p.pagetable.copyinstr(buf, .{ .addr = addr }) catch unreachable;
-    return std.mem.len(buf);
+    return p.pagetable.copyinstr(buf, .{ .addr = addr }) catch unreachable;
 }
 
 pub fn arg(n: u8) usize {
