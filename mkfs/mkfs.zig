@@ -74,7 +74,7 @@ const Disk = struct {
     const Inode = struct {
         // host endian
         number: u16,
-        type: u16,
+        type: FileType,
         nlink: u16 = 1,
         size: u32 = 0,
         addrs: [fs.NDIRECT + 1 + 1]u32 = .{0} ** (fs.NDIRECT + 1 + 1),
@@ -83,7 +83,7 @@ const Disk = struct {
         fn dinode(self: Inode) Dinode {
             var node: Dinode = undefined;
 
-            node.type = @intCast(i16, toLittle(u16, self.type));
+            node.type = toLittle(FileType, self.type);
             node.nlink = @intCast(i16, toLittle(u16, self.nlink));
             node.size = toLittle(u32, self.size);
 
@@ -100,7 +100,7 @@ const Disk = struct {
         defer self.freeinode += 1;
         return .{
             .number = self.freeinode,
-            .type = @enumToInt(@"type"),
+            .type = @"type",
         };
     }
 

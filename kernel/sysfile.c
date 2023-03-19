@@ -119,7 +119,6 @@ sys_fstat(void)
     return -1;
   return filestat(f, st);
 }
-#endif
 
 // Create the path new as a link to the same inode as old.
 uint64
@@ -170,6 +169,7 @@ bad:
   end_op();
   return -1;
 }
+#endif
 
 // Is the directory dp empty except for "." and ".." ?
 static int

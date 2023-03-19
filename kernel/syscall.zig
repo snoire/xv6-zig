@@ -69,10 +69,10 @@ pub fn argaddr(n: u8) usize {
 
 /// Fetch the nth word-sized system call argument as a null-terminated string.
 /// Copies into buf, at most max.
-/// Returns string length if OK (including nul), -1 if error.
-fn argstr(n: u8, buf: [*:0]u8, max: usize) usize {
+/// Returns string length if OK (including nul), panic if error.
+pub fn argstr(n: u8, buf: []u8) [:0]const u8 {
     var addr = argaddr(n);
-    return fetchstr(addr, buf[0..max]);
+    return fetchStr(addr, buf);
 }
 
 pub const SYS = enum(u8) {
@@ -110,7 +110,6 @@ const sys = struct {
     extern fn sys_open() usize;
     extern fn sys_mknod() usize;
     extern fn sys_unlink() usize;
-    extern fn sys_link() usize;
     extern fn sys_mkdir() usize;
 };
 

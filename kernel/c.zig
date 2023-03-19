@@ -55,7 +55,7 @@ pub const Pipe = extern struct {
 };
 
 pub const Stat = extern struct {
-    pub const Type = enum(u8) {
+    pub const Type = enum(u16) {
         dir = 1,
         file = 2,
         device = 3,
@@ -66,7 +66,7 @@ pub const Stat = extern struct {
     /// Inode number
     ino: c_int,
     /// Type of file
-    type: c_short,
+    type: Type,
     /// Number of links to file
     nlink: c_short,
     /// Size of file in bytes
@@ -120,7 +120,7 @@ pub const Inode = extern struct {
     valid: c_int,
 
     /// copy of disk inode
-    type: c_short,
+    type: Stat.Type,
     major: c_short,
     minor: c_short,
     nlink: c_short,
@@ -128,13 +128,26 @@ pub const Inode = extern struct {
     addrs: [fs.NDIRECT + 1 + 1]c_uint,
 
     pub const dup = idup;
+    pub const ilock = c.ilock;
     pub const put = iput;
+    pub const unlockput = iunlockput;
+    pub const update = iupdate;
+    pub const unlock = iunlock;
+    pub const dirlink = c.dirlink;
 };
 
 // fs.c
 pub extern fn fsinit(c_int) void;
+pub extern fn namei([*:0]const u8) ?*Inode;
+pub extern fn nameiparent([*:0]const u8, [*]u8) ?*Inode;
+
 pub extern fn idup(inode: *Inode) *Inode;
+pub extern fn ilock(inode: *Inode) void;
 pub extern fn iput(inode: *Inode) void;
+pub extern fn iunlockput(inode: *Inode) void;
+pub extern fn iupdate(inode: *Inode) void;
+pub extern fn iunlock(inode: *Inode) void;
+pub extern fn dirlink(inode: *Inode, name: [*]u8, inum: usize) c_int;
 
 // Disk layout:
 // [ boot block | super block | log | inode blocks | free bit map | data blocks]
@@ -164,7 +177,7 @@ pub const SuperBlock = extern struct {
 
 // 64 bytes
 pub const Dinode = extern struct {
-    type: c_short,
+    type: Stat.Type,
     major: c_short,
     minor: c_short,
     nlink: c_short,

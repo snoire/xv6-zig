@@ -62,3 +62,35 @@ pub fn fstat() callconv(.C) usize {
     var st = syscall.argaddr(1);
     return f.stat(st);
 }
+
+/// Create the path new as a link to the same inode as old.
+pub fn link() callconv(.C) usize {
+    var name: [c.Dirent.DIRSIZ]u8 = undefined;
+    var old_buf: [xv6.MAXPATH]u8 = undefined;
+    var new_buf: [xv6.MAXPATH]u8 = undefined;
+
+    var old = syscall.argstr(0, &old_buf);
+    var new = syscall.argstr(1, &new_buf);
+
+    c.begin_op();
+    defer c.end_op();
+
+    var ip = c.namei(old).?;
+    ip.ilock();
+
+    if (ip.type == .dir) @panic("create the link of dir?");
+    ip.nlink += 1;
+    ip.update();
+    ip.unlock();
+
+    var dp = c.nameiparent(new, &name).?;
+    dp.ilock();
+
+    if (dp.dev != ip.dev) @panic("dp.dev != ip.dev");
+    if (dp.dirlink(&name, ip.inum) < 0) @panic("dirlink");
+
+    dp.unlockput();
+    ip.put();
+
+    return 0;
+}
