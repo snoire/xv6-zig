@@ -169,7 +169,6 @@ bad:
   end_op();
   return -1;
 }
-#endif
 
 // Is the directory dp empty except for "." and ".." ?
 static int
@@ -243,6 +242,7 @@ bad:
   end_op();
   return -1;
 }
+#endif
 
 static struct inode*
 create(char *path, short type, short major, short minor)

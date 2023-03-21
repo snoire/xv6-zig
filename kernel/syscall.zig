@@ -109,7 +109,6 @@ const sys = struct {
     extern fn sys_chdir() usize;
     extern fn sys_open() usize;
     extern fn sys_mknod() usize;
-    extern fn sys_unlink() usize;
     extern fn sys_mkdir() usize;
 };
 

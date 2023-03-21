@@ -134,6 +134,9 @@ pub const Inode = extern struct {
     pub const update = iupdate;
     pub const unlock = iunlock;
     pub const dirlink = c.dirlink;
+    pub const dirlookup = c.dirlookup;
+    pub const write = writei;
+    pub const read = readi;
 };
 
 // fs.c
@@ -148,6 +151,10 @@ pub extern fn iunlockput(inode: *Inode) void;
 pub extern fn iupdate(inode: *Inode) void;
 pub extern fn iunlock(inode: *Inode) void;
 pub extern fn dirlink(inode: *Inode, name: [*]u8, inum: usize) c_int;
+pub extern fn dirlookup(inode: *Inode, name: [*]u8, poff: *u32) ?*Inode;
+
+pub extern fn writei(inode: *Inode, user_src: bool, src: usize, off: u32, n: u32) c_int;
+pub extern fn readi(inode: *Inode, user_src: bool, dst: usize, off: u32, n: u32) c_int;
 
 // Disk layout:
 // [ boot block | super block | log | inode blocks | free bit map | data blocks]

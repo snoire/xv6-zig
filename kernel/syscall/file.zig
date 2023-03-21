@@ -1,3 +1,4 @@
+const std = @import("std");
 const c = @import("../c.zig");
 const xv6 = @import("../xv6.zig");
 const syscall = @import("../syscall.zig");
@@ -65,7 +66,6 @@ pub fn fstat() callconv(.C) usize {
 
 /// Create the path new as a link to the same inode as old.
 pub fn link() callconv(.C) usize {
-    var name: [c.Dirent.DIRSIZ]u8 = undefined;
     var old_buf: [xv6.MAXPATH]u8 = undefined;
     var new_buf: [xv6.MAXPATH]u8 = undefined;
 
@@ -83,6 +83,7 @@ pub fn link() callconv(.C) usize {
     ip.update();
     ip.unlock();
 
+    var name: [c.Dirent.DIRSIZ]u8 = undefined;
     var dp = c.nameiparent(new, &name).?;
     dp.ilock();
 
@@ -91,6 +92,67 @@ pub fn link() callconv(.C) usize {
 
     dp.unlockput();
     ip.put();
+
+    return 0;
+}
+
+/// Is the directory dp empty except for "." and ".." ?
+fn isdirempty(dp: *c.Inode) bool {
+    var de: c.Dirent = undefined;
+    var off: usize = 2 * @sizeOf(c.Dirent); // skip "." and ".."
+
+    while (off < dp.size) : (off += @sizeOf(c.Dirent)) {
+        var nbytes = dp.read(false, @ptrToInt(&de), @intCast(u32, off), @sizeOf(c.Dirent));
+        if (nbytes != @sizeOf(c.Dirent)) @panic("isdirempty: readi");
+        if (de.inum != 0) return false;
+    } else {
+        return true;
+    }
+}
+
+pub fn unlink() callconv(.C) usize {
+    var path_buf: [xv6.MAXPATH]u8 = undefined;
+    var path = syscall.argstr(0, &path_buf);
+
+    c.begin_op();
+    defer c.end_op();
+
+    var name: [c.Dirent.DIRSIZ]u8 = undefined;
+    var dp = c.nameiparent(path, &name).?;
+    dp.ilock();
+
+    if (std.mem.eql(u8, &name, ".") or std.mem.eql(u8, &name, "..")) {
+        @panic("Cannot unlink `.` or `..`");
+    }
+
+    var off: u32 = undefined;
+    var ip = dp.dirlookup(&name, &off).?;
+    ip.ilock();
+
+    if (ip.nlink < 1) {
+        @panic("unlink: nlink < 1");
+    }
+
+    if (ip.type == .dir and !isdirempty(ip)) {
+        @panic("ip.type == .dir and !isdirempty(ip)");
+    }
+
+    var de = std.mem.zeroes(c.Dirent);
+    var nbytes = dp.write(false, @ptrToInt(&de), off, @sizeOf(c.Dirent));
+
+    if (nbytes != @sizeOf(c.Dirent)) {
+        @panic("unlink: writei");
+    }
+
+    if (ip.type == .dir) {
+        dp.nlink -= 1;
+        dp.update();
+    }
+    dp.unlockput();
+
+    ip.nlink -= 1;
+    ip.update();
+    ip.unlockput();
 
     return 0;
 }
