@@ -156,3 +156,101 @@ pub fn unlink() callconv(.C) usize {
 
     return 0;
 }
+
+fn create(path: [*:0]const u8, file_type: c.Stat.Type, major: c_short, minor: c_short) ?*c.Inode {
+    var name: [c.Dirent.DIRSIZ]u8 = undefined;
+    var dp = c.nameiparent(path, &name).?;
+    dp.ilock();
+
+    var inode = dp.dirlookup(&name, null);
+    if (inode) |ip| {
+        dp.unlockput();
+        ip.ilock();
+
+        if (file_type == .file and (ip.type == .file or ip.type == .device)) {
+            return ip;
+        }
+        ip.unlockput();
+        return null;
+    }
+
+    var ip = c.Inode.alloc(dp.dev, file_type).?;
+    ip.ilock();
+    ip.major = major;
+    ip.minor = minor;
+    ip.nlink = 1;
+    ip.update();
+
+    if (ip.type == .dir) {
+        if (dp.dirlink(".", ip.inum) < 0) @panic("dirlink");
+        if (dp.dirlink("..", ip.inum) < 0) @panic("dirlink");
+    }
+
+    if (dp.dirlink(&name, ip.inum) < 0) @panic("dirlink");
+
+    if (file_type == .dir) {
+        dp.nlink += 1;
+        dp.update();
+    }
+
+    dp.unlockput();
+    return ip;
+}
+
+const O = struct {
+    const RDONLY = 0x000;
+    const WRONLY = 0x001;
+    const RDWR = 0x002;
+    const CREATE = 0x200;
+    const TRUNC = 0x400;
+};
+
+pub fn open() callconv(.C) usize {
+    var path_buf: [xv6.MAXPATH]u8 = undefined;
+    var path = syscall.argstr(0, &path_buf);
+
+    var omode = syscall.argint(1);
+
+    c.begin_op();
+    defer c.end_op();
+
+    var ip: *c.Inode = undefined;
+    if (omode & O.CREATE != 0) {
+        ip = create(path, .file, 0, 0).?;
+    } else {
+        ip = c.namei(path) orelse {
+            return @truncate(usize, -1);
+        };
+        ip.ilock();
+
+        if (ip.type == .dir and omode != O.RDONLY) {
+            @panic("ip.type == .dir and omode != O.RDONLY");
+        }
+    }
+
+    if (ip.type == .device and (ip.major < 0 or ip.major >= xv6.NDEV)) {
+        @panic("ip.type == .device and (ip.major < 0 or ip.major >= xv6.NDEV)");
+    }
+
+    var f = c.File.alloc().?;
+    var fd = fdalloc(f);
+
+    if (ip.type == .device) {
+        f.type = .device;
+        f.major = ip.major;
+    } else {
+        f.type = .inode;
+        f.off = 0;
+    }
+
+    f.ip = ip;
+    f.readable = @boolToInt(!(omode & O.WRONLY != 0));
+    f.writable = @boolToInt((omode & O.WRONLY != 0) or (omode & O.RDWR != 0));
+
+    if ((omode & O.TRUNC != 0) and ip.type == .file) {
+        ip.trunc();
+    }
+
+    ip.unlock();
+    return fd;
+}

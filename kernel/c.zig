@@ -93,6 +93,7 @@ pub const File = extern struct {
     pub const write = filewrite;
     pub const close = fileclose;
     pub const stat = filestat;
+    pub const alloc = filealloc;
 };
 
 // file.c
@@ -101,6 +102,7 @@ pub extern fn fileread(file: *File, addr: usize, n: u32) usize;
 pub extern fn filewrite(file: *File, addr: usize, n: u32) usize;
 pub extern fn fileclose(file: *File) void;
 pub extern fn filestat(file: *File, addr: usize) usize;
+pub extern fn filealloc() ?*File;
 
 // log.c
 pub extern fn begin_op() void;
@@ -137,6 +139,8 @@ pub const Inode = extern struct {
     pub const dirlookup = c.dirlookup;
     pub const write = writei;
     pub const read = readi;
+    pub const trunc = itrunc;
+    pub const alloc = ialloc;
 };
 
 // fs.c
@@ -150,11 +154,13 @@ pub extern fn iput(inode: *Inode) void;
 pub extern fn iunlockput(inode: *Inode) void;
 pub extern fn iupdate(inode: *Inode) void;
 pub extern fn iunlock(inode: *Inode) void;
-pub extern fn dirlink(inode: *Inode, name: [*]u8, inum: usize) c_int;
-pub extern fn dirlookup(inode: *Inode, name: [*]u8, poff: *u32) ?*Inode;
+pub extern fn dirlink(inode: *Inode, name: [*]const u8, inum: usize) c_int;
+pub extern fn dirlookup(inode: *Inode, name: [*]u8, poff: ?*u32) ?*Inode;
 
 pub extern fn writei(inode: *Inode, user_src: bool, src: usize, off: u32, n: u32) c_int;
 pub extern fn readi(inode: *Inode, user_src: bool, dst: usize, off: u32, n: u32) c_int;
+pub extern fn itrunc(inode: *Inode) void;
+pub extern fn ialloc(dev: c_uint, type: Stat.Type) ?*Inode;
 
 // Disk layout:
 // [ boot block | super block | log | inode blocks | free bit map | data blocks]
