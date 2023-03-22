@@ -160,23 +160,10 @@ pub fn build(b: *std.Build) void {
         run_mkfs.addFileSourceArg(app);
     }
 
-    // fs.img will be regenerated when these files are modified.
-    run_mkfs.extra_file_dependencies = comptime blk: {
-        var cfiles: [capps.len][]const u8 = undefined;
-        for (capps, 0..) |name, i| {
-            cfiles[i] = "user/" ++ name ++ ".c";
-        }
-
-        var zfiles: [zapps.len][]const u8 = undefined;
-        for (zapps, 0..) |name, i| {
-            zfiles[i] = "user/" ++ name ++ ".zig";
-        }
-
-        break :blk &(cfiles ++ zfiles);
-    };
+    // fs.img will be regenerated when README are modified.
+    run_mkfs.extra_file_dependencies = &.{"README.md"};
 
     const install_fs_img = b.addInstallFile(fs_img, "fs.img");
-    install_fs_img.step.dependOn(&run_mkfs.step);
     b.getInstallStep().dependOn(&install_fs_img.step);
 
     const fs_tls = b.step("fs", "Build fs.img");
