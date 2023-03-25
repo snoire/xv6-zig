@@ -181,9 +181,9 @@ fn create(path: [*:0]const u8, file_type: c.Stat.Type, major: c_short, minor: c_
     ip.nlink = 1;
     ip.update();
 
-    if (ip.type == .dir) {
-        if (dp.dirlink(".", ip.inum) < 0) @panic("dirlink");
-        if (dp.dirlink("..", ip.inum) < 0) @panic("dirlink");
+    if (file_type == .dir) {
+        if (ip.dirlink(".", ip.inum) < 0) @panic("dirlink");
+        if (ip.dirlink("..", dp.inum) < 0) @panic("dirlink");
     }
 
     if (dp.dirlink(&name, ip.inum) < 0) @panic("dirlink");
@@ -254,3 +254,22 @@ pub fn open() callconv(.C) usize {
     ip.unlock();
     return fd;
 }
+
+pub fn mkdir() callconv(.C) usize {
+    c.begin_op();
+    defer c.end_op();
+
+    var path_buf: [xv6.MAXPATH]u8 = undefined;
+    var path = syscall.argstr(0, &path_buf);
+
+    var ip = create(path, .dir, 0, 0).?;
+    ip.unlockput();
+    return 0;
+}
+
+// pub fn mknod() callconv(.C) usize {
+//     var major = syscall.argint(1);
+//     var minor = syscall.argint(2);
+// }
+
+// pub fn chdir() callconv(.C) usize {}
