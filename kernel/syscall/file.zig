@@ -267,9 +267,19 @@ pub fn mkdir() callconv(.C) usize {
     return 0;
 }
 
-// pub fn mknod() callconv(.C) usize {
-//     var major = syscall.argint(1);
-//     var minor = syscall.argint(2);
-// }
+pub fn mknod() callconv(.C) usize {
+    c.begin_op();
+    defer c.end_op();
+
+    var path_buf: [xv6.MAXPATH]u8 = undefined;
+    var path = syscall.argstr(0, &path_buf);
+
+    var major = @intCast(c_short, syscall.argint(1));
+    var minor = @intCast(c_short, syscall.argint(2));
+
+    var ip = create(path, .device, major, minor).?;
+    ip.unlockput();
+    return 0;
+}
 
 // pub fn chdir() callconv(.C) usize {}
