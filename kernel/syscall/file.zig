@@ -282,4 +282,22 @@ pub fn mknod() callconv(.C) usize {
     return 0;
 }
 
-// pub fn chdir() callconv(.C) usize {}
+pub fn chdir() callconv(.C) usize {
+    var p = proc.myproc().?;
+
+    c.begin_op();
+
+    var path_buf: [xv6.MAXPATH]u8 = undefined;
+    var path = syscall.argstr(0, &path_buf);
+
+    var ip = c.namei(path).?;
+    ip.ilock();
+
+    if (ip.type != .dir) @panic("chdir");
+    ip.unlock();
+    p.cwd.?.put();
+    c.end_op();
+
+    p.cwd = ip;
+    return 0;
+}
