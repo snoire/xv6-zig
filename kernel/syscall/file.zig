@@ -3,6 +3,8 @@ const c = @import("../c.zig");
 const xv6 = @import("../xv6.zig");
 const syscall = @import("../syscall.zig");
 const proc = @import("../proc.zig");
+const kalloc = @import("../kalloc.zig");
+const execv = @import("exec.zig").exec;
 
 /// Fetch the nth word-sized system call argument as a file descriptor
 /// and return the corresponding struct file.
@@ -219,7 +221,7 @@ pub fn open() callconv(.C) usize {
         ip = create(path, .file, 0, 0).?;
     } else {
         ip = c.namei(path) orelse {
-            return @truncate(usize, -1);
+            return @bitCast(usize, @as(isize, -1));
         };
         ip.ilock();
 
@@ -300,4 +302,33 @@ pub fn chdir() callconv(.C) usize {
 
     p.cwd = ip;
     return 0;
+}
+
+pub fn exec() callconv(.C) usize {
+    var path_buf: [xv6.MAXPATH]u8 = undefined;
+    var path = syscall.argstr(0, &path_buf);
+
+    var uargv = syscall.argaddr(1);
+
+    var argv: [xv6.MAXARG - 1:null]?[*:0]u8 = .{null} ** xv6.MAXARG;
+
+    for (0..xv6.MAXARG) |i| {
+        var uarg = syscall.fetchAddr(uargv + i * @sizeOf(usize));
+        if (uarg == 0) break;
+
+        argv[i] = @constCast(syscall.fetchStr(uarg, kalloc.kalloc()));
+    }
+
+    var ret: c_int = execv(path, &argv);
+
+    for (&argv) |*addr| {
+        if (addr.* != null) {
+            kalloc.kfree(@ptrCast(
+                *align(kalloc.PGSIZE) [4096]u8,
+                @alignCast(kalloc.PGSIZE, addr.*.?),
+            ));
+        }
+    }
+
+    return @bitCast(usize, @as(isize, ret));
 }

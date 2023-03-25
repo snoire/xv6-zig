@@ -6,7 +6,7 @@ const std = @import("std");
 const c = @import("c.zig");
 const SpinLock = @import("SpinLock.zig");
 
-const PGSIZE = 4096;
+pub const PGSIZE = 4096;
 pub const Page = [PGSIZE]u8;
 
 pub const KERNBASE = 0x80000000;

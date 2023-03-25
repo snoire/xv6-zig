@@ -23,7 +23,7 @@ pub fn wait() callconv(.C) usize {
 pub fn sbrk() callconv(.C) usize {
     var n = syscall.argint(0);
     var addr = proc.myproc().?.sz;
-    if (proc.growproc(@intCast(i32, n)) == -1) return @truncate(usize, -1);
+    if (proc.growproc(@intCast(i32, n)) == -1) return @bitCast(usize, @as(isize, -1));
     return addr;
 }
 
@@ -39,7 +39,7 @@ pub fn sleep() callconv(.C) usize {
     var ticks0 = ticks;
 
     while (ticks - ticks0 < n) {
-        if (proc.killed(proc.myproc().?) != 0) return @truncate(usize, -1);
+        if (proc.killed(proc.myproc().?) != 0) return @bitCast(usize, @as(isize, -1));
         proc.sleep(&ticks, &tickslock);
     }
     return 0;

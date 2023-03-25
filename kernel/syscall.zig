@@ -17,7 +17,7 @@ export fn fetchaddr(addr: usize, ip: *usize) c_int {
     return p.pagetable.copyin(@ptrCast([*]u8, ip), .{ .addr = addr }, @sizeOf(@TypeOf(ip.*)));
 }
 
-fn fetchAddr(addr: usize) usize {
+pub fn fetchAddr(addr: usize) usize {
     var p: *Proc = myproc().?;
     if (addr >= p.sz or addr + @sizeOf(usize) > p.sz) {
         @panic("fetchAddr");
@@ -36,7 +36,7 @@ export fn fetchstr(addr: usize, buf: [*:0]u8, max: usize) c_int {
     return @intCast(c_int, str.len);
 }
 
-fn fetchStr(addr: usize, buf: []u8) [:0]const u8 {
+pub fn fetchStr(addr: usize, buf: []u8) [:0]const u8 {
     var p: *Proc = myproc().?;
     return p.pagetable.copyinstr(buf, .{ .addr = addr }) catch unreachable;
 }
