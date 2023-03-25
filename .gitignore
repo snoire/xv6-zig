@@ -28,3 +28,5 @@ kernel/kalloc.c
 kernel/vm.c
 kernel/proc.c
 kernel/sysproc.c
+kernel/sysfile.c
+kernel/syscall.c

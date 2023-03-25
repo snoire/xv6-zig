@@ -102,14 +102,6 @@ pub const SYS = enum(u8) {
 const sys = struct {
     usingnamespace @import("syscall/proc.zig");
     usingnamespace @import("syscall/file.zig");
-
-    extern fn sys_pipe() usize;
-    extern fn sys_exec() usize;
-    extern fn sys_fstat() usize;
-    extern fn sys_chdir() usize;
-    extern fn sys_open() usize;
-    extern fn sys_mknod() usize;
-    extern fn sys_mkdir() usize;
 };
 
 /// An array mapping syscall numbers from `SYS`
@@ -120,10 +112,7 @@ const syscalls = blk: {
     // Note that syscalls[0] doesn't contain any function pointer since syscall starts from 1.
     var sys_calls: [sys_fields.len + 1]*const fn () callconv(.C) usize = undefined;
     for (sys_fields) |call| {
-        sys_calls[call.value] = if (@hasDecl(sys, call.name))
-            @field(sys, call.name)
-        else
-            @field(sys, "sys_" ++ call.name);
+        sys_calls[call.value] = @field(sys, call.name);
     }
 
     break :blk sys_calls;

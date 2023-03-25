@@ -51,7 +51,6 @@ fdalloc(struct file *f)
   return -1;
 }
 
-#if 0
 uint64
 sys_dup(void)
 {
@@ -242,7 +241,6 @@ bad:
   end_op();
   return -1;
 }
-#endif
 
 static struct inode*
 create(char *path, short type, short major, short minor)

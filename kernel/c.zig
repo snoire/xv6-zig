@@ -52,7 +52,14 @@ pub const Pipe = extern struct {
     readopen: c_int,
     /// write fd is still open
     writeopen: c_int,
+
+    pub const alloc = pipealloc;
+    pub const close = pipeclose;
 };
+
+// pipe.c
+pub extern fn pipealloc(**File, **File) c_int;
+pub extern fn pipeclose(*Pipe, c_int) void;
 
 pub const Stat = extern struct {
     pub const Type = enum(u16) {

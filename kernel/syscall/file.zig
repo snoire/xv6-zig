@@ -332,3 +332,34 @@ pub fn exec() callconv(.C) usize {
 
     return @bitCast(usize, @as(isize, ret));
 }
+
+pub fn pipe() callconv(.C) usize {
+    var rf: *c.File = undefined;
+    var wf: *c.File = undefined;
+    if (c.Pipe.alloc(&rf, &wf) < 0) @panic("pipe alloc");
+
+    var fd0 = fdalloc(rf);
+    if (fd0 < 0) @panic("fd0 < 0");
+
+    var fd1 = fdalloc(wf);
+    if (fd1 < 0) @panic("fd1 < 0");
+
+    var p = proc.myproc().?;
+    var fdarray = syscall.argaddr(0);
+
+    var ret = p.pagetable.copyout(
+        .{ .addr = fdarray },
+        @ptrCast([*]u8, &fd0),
+        @sizeOf(@TypeOf(fd0)),
+    );
+    if (ret < 0) @panic("copyout");
+
+    ret = p.pagetable.copyout(
+        .{ .addr = fdarray + @sizeOf(@TypeOf(fd0)) },
+        @ptrCast([*]u8, &fd1),
+        @sizeOf(@TypeOf(fd1)),
+    );
+    if (ret < 0) @panic("copyout");
+
+    return 0;
+}
