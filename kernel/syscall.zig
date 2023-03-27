@@ -110,7 +110,7 @@ const syscalls = blk: {
     const sys_fields = std.meta.fields(SYS);
 
     // Note that syscalls[0] doesn't contain any function pointer since syscall starts from 1.
-    var sys_calls: [sys_fields.len + 1]*const fn () callconv(.C) usize = undefined;
+    var sys_calls: [sys_fields.len + 1]*const fn () callconv(.C) isize = undefined;
     for (sys_fields) |call| {
         sys_calls[call.value] = @field(sys, call.name);
     }
@@ -127,7 +127,7 @@ export fn syscall() void {
     if (num > 0 and num < syscalls.len) {
         // Use num to lookup the system call function for num, call it,
         // and store its return value in p.trapframe.a0
-        p.trapframe.?.a0 = syscalls[num]();
+        p.trapframe.?.a0 = @bitCast(usize, syscalls[num]());
     } else {
         print("{} {s}: unknown sys call {}\n", .{ p.pid, &p.name, num });
         p.trapframe.?.a0 = std.math.maxInt(usize);

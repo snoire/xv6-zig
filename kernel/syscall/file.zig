@@ -31,28 +31,28 @@ fn fdalloc(f: *c.File) u32 {
     } else @panic("fdalloc");
 }
 
-pub fn dup() callconv(.C) usize {
+pub fn dup() callconv(.C) isize {
     var f = argfile(0);
     var fd = fdalloc(f);
     _ = f.dup();
     return fd;
 }
 
-pub fn read() callconv(.C) usize {
+pub fn read() callconv(.C) isize {
     var f = argfile(0);
     var p = syscall.argaddr(1);
     var n = syscall.argint(2);
-    return f.read(p, n);
+    return @intCast(isize, f.read(p, n));
 }
 
-pub fn write() callconv(.C) usize {
+pub fn write() callconv(.C) isize {
     var f = argfile(0);
     var p = syscall.argaddr(1);
     var n = syscall.argint(2);
-    return f.write(p, n);
+    return @intCast(isize, f.write(p, n));
 }
 
-pub fn close() callconv(.C) usize {
+pub fn close() callconv(.C) isize {
     var fd = syscall.argint(0);
     var f = argfile(0); // user pointer to struct stat
     proc.myproc().?.ofile[fd] = null;
@@ -60,14 +60,14 @@ pub fn close() callconv(.C) usize {
     return 0;
 }
 
-pub fn fstat() callconv(.C) usize {
+pub fn fstat() callconv(.C) isize {
     var f = argfile(0);
     var st = syscall.argaddr(1);
-    return f.stat(st);
+    return @intCast(isize, f.stat(st));
 }
 
 /// Create the path new as a link to the same inode as old.
-pub fn link() callconv(.C) usize {
+pub fn link() callconv(.C) isize {
     var old_buf: [xv6.MAXPATH]u8 = undefined;
     var new_buf: [xv6.MAXPATH]u8 = undefined;
 
@@ -112,7 +112,7 @@ fn isdirempty(dp: *c.Inode) bool {
     }
 }
 
-pub fn unlink() callconv(.C) usize {
+pub fn unlink() callconv(.C) isize {
     var path_buf: [xv6.MAXPATH]u8 = undefined;
     var path = syscall.argstr(0, &path_buf);
 
@@ -207,7 +207,7 @@ const O = struct {
     const TRUNC = 0x400;
 };
 
-pub fn open() callconv(.C) usize {
+pub fn open() callconv(.C) isize {
     var path_buf: [xv6.MAXPATH]u8 = undefined;
     var path = syscall.argstr(0, &path_buf);
 
@@ -221,7 +221,7 @@ pub fn open() callconv(.C) usize {
         ip = create(path, .file, 0, 0).?;
     } else {
         ip = c.namei(path) orelse {
-            return @bitCast(usize, @as(isize, -1));
+            return -1;
         };
         ip.ilock();
 
@@ -257,7 +257,7 @@ pub fn open() callconv(.C) usize {
     return fd;
 }
 
-pub fn mkdir() callconv(.C) usize {
+pub fn mkdir() callconv(.C) isize {
     c.begin_op();
     defer c.end_op();
 
@@ -269,7 +269,7 @@ pub fn mkdir() callconv(.C) usize {
     return 0;
 }
 
-pub fn mknod() callconv(.C) usize {
+pub fn mknod() callconv(.C) isize {
     c.begin_op();
     defer c.end_op();
 
@@ -284,7 +284,7 @@ pub fn mknod() callconv(.C) usize {
     return 0;
 }
 
-pub fn chdir() callconv(.C) usize {
+pub fn chdir() callconv(.C) isize {
     var p = proc.myproc().?;
 
     c.begin_op();
@@ -304,7 +304,7 @@ pub fn chdir() callconv(.C) usize {
     return 0;
 }
 
-pub fn exec() callconv(.C) usize {
+pub fn exec() callconv(.C) isize {
     var path_buf: [xv6.MAXPATH]u8 = undefined;
     var path = syscall.argstr(0, &path_buf);
 
@@ -330,10 +330,10 @@ pub fn exec() callconv(.C) usize {
         }
     }
 
-    return @bitCast(usize, @as(isize, ret));
+    return ret;
 }
 
-pub fn pipe() callconv(.C) usize {
+pub fn pipe() callconv(.C) isize {
     var rf: *c.File = undefined;
     var wf: *c.File = undefined;
     if (c.Pipe.alloc(&rf, &wf) < 0) @panic("pipe alloc");
