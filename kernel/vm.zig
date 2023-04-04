@@ -153,7 +153,7 @@ pub const PageTable = packed union {
     /// Look up a virtual address, return the physical address,
     /// or panic if not mapped.
     /// Can only be used to look up user pages.
-    fn walkaddr(pagetable: PageTable, va: VirAddr) PhyAddr {
+    pub fn walkaddr(pagetable: PageTable, va: VirAddr) PhyAddr {
         if (va.addr >= VirAddr.MAXVA) @panic("walkaddr");
 
         var pte = pagetable.walk(va, false) catch unreachable;
@@ -309,7 +309,7 @@ pub const PageTable = packed union {
 
     /// mark a PTE invalid for user access.
     /// used by exec for the user stack guard page.
-    export fn uvmclear(pagetable: PageTable, va: VirAddr) void {
+    pub export fn uvmclear(pagetable: PageTable, va: VirAddr) void {
         var pte = pagetable.walk(va, false) catch unreachable;
         pte.flags.user = false;
     }
@@ -387,7 +387,7 @@ pub const PageTable = packed union {
 };
 
 /// page-table entry
-const Pte = packed struct {
+pub const Pte = packed struct {
     // flags
     flags: Flags = .{},
 
@@ -398,7 +398,7 @@ const Pte = packed struct {
 
     _: u10 = 0,
 
-    const Flags = packed struct {
+    pub const Flags = packed struct {
         valid: bool = false,
         readable: bool = false,
         writable: bool = false,

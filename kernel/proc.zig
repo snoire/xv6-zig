@@ -107,7 +107,7 @@ fn allocproc() ?*c.Proc {
 
 /// Create a user page table for a given process, with no user memory,
 /// but with trampoline and trapframe pages.
-export fn proc_pagetable(p: *c.Proc) PageTable {
+pub export fn proc_pagetable(p: *c.Proc) PageTable {
     // An empty page table.
     var pagetable = PageTable.create();
 
@@ -155,7 +155,7 @@ fn freeproc(p: *c.Proc) void {
 
 /// Free a process's page table, and free the
 /// physical memory it refers to.
-export fn proc_freepagetable(pagetable: PageTable, sz: usize) void {
+pub export fn proc_freepagetable(pagetable: PageTable, sz: usize) void {
     pagetable.unmap(.{ .addr = TRAMPOLINE }, 1, false);
     pagetable.unmap(.{ .addr = TRAPFRAME }, 1, false);
     pagetable.free(sz);

@@ -164,8 +164,8 @@ pub extern fn iunlock(inode: *Inode) void;
 pub extern fn dirlink(inode: *Inode, name: [*]const u8, inum: usize) c_int;
 pub extern fn dirlookup(inode: *Inode, name: [*]u8, poff: ?*u32) ?*Inode;
 
-pub extern fn writei(inode: *Inode, user_src: bool, src: usize, off: u32, n: u32) c_int;
-pub extern fn readi(inode: *Inode, user_src: bool, dst: usize, off: u32, n: u32) c_int;
+pub extern fn writei(inode: *Inode, user_src: bool, src: usize, off: usize, n: usize) c_int;
+pub extern fn readi(inode: *Inode, user_src: bool, dst: usize, off: usize, n: usize) c_int;
 pub extern fn itrunc(inode: *Inode) void;
 pub extern fn ialloc(dev: c_uint, type: Stat.Type) ?*Inode;
 

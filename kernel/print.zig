@@ -75,7 +75,7 @@ pub fn panicFn(msg: []const u8, _: ?*std.builtin.StackTrace, return_addr: ?usize
 
     print(
         \\Use the following command to get information about the stack trace:
-        \\  zig build addr2line (other options when running xv6) --
+        \\  zig build addr2line [other options when running xv6] --
     , .{});
     while (it.next()) |ret_addr| {
         print(" 0x{x}", .{ret_addr});

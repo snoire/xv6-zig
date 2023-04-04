@@ -30,3 +30,4 @@ kernel/proc.c
 kernel/sysproc.c
 kernel/sysfile.c
 kernel/syscall.c
+kernel/exec.c

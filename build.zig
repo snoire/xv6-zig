@@ -53,13 +53,13 @@ const kfiles = .{
     // "syscall.c",
     // "sysproc.c",
     // "sysfile.c",
+    // "exec.c",
 
     "bio.c",
     "fs.c",
     "log.c",
     "file.c",
     "pipe.c",
-    "exec.c",
     "plic.c",
     "virtio_disk.c",
 
