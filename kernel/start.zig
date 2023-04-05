@@ -3,6 +3,7 @@ const csr = xv6.register.csr;
 const gpr = xv6.register.gpr;
 const clint = xv6.clint;
 const main = @import("main.zig").main;
+const std = @import("std");
 pub const panic = @import("print.zig").panicFn;
 
 export var stack0: [xv6.NCPU * 1024 * 16]u8 align(16) = undefined;
@@ -95,3 +96,13 @@ comptime {
     _ = @import("vm.zig");
     _ = @import("proc.zig");
 }
+
+// define std.heap.page_allocator
+pub const os = struct {
+    pub const heap = struct {
+        pub const page_allocator = std.mem.Allocator{
+            .ptr = undefined,
+            .vtable = &@import("PageAllocator.zig").vtable,
+        };
+    };
+};

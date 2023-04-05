@@ -10,7 +10,7 @@ pub const PGSIZE = 4096;
 pub const Page = [PGSIZE]u8;
 
 pub const KERNBASE = 0x80000000;
-pub const PHYSTOP = KERNBASE + 128 * 1024 * 1024;
+pub const PHYSTOP = KERNBASE + 64 * 1024 * 1024;
 
 /// first address after kernel.
 /// defined by kernel.ld.
@@ -31,6 +31,20 @@ pub fn init() void {
     for (pages) |*page| {
         kfree(page);
     }
+
+    // test page_allocator
+    const PageAllocator = @import("PageAllocator.zig");
+    PageAllocator.init();
+
+    const allocator = std.heap.page_allocator;
+    const mem1 = allocator.alloc(u8, 100) catch unreachable;
+
+    const mem2 = allocator.alloc(u8, 4098) catch unreachable;
+    allocator.free(mem1);
+    const mem3 = allocator.alloc(u8, 4096 * 2 + 1) catch unreachable;
+
+    allocator.free(mem2);
+    allocator.free(mem3);
 }
 
 /// Allocate one 4096-byte page of physical memory.
