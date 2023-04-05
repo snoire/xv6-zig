@@ -384,6 +384,14 @@ pub const PageTable = packed union {
             return error.InvalidString;
         }
     }
+
+    /// Free a process's page table, and free the
+    /// physical memory it refers to.
+    pub fn freepagetable(pagetable: PageTable, sz: usize) void {
+        pagetable.unmap(.{ .addr = TRAMPOLINE }, 1, false);
+        pagetable.unmap(.{ .addr = TRAPFRAME }, 1, false);
+        pagetable.free(sz);
+    }
 };
 
 /// page-table entry

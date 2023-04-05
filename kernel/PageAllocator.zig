@@ -22,7 +22,7 @@ pub const vtable = Allocator.VTable{
 /// defined by kernel.ld.
 extern const heap_start: u8;
 
-const Run = extern struct {
+const Run = struct {
     next: ?*align(PGSIZE) Run,
 };
 

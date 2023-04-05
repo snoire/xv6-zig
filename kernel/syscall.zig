@@ -2,14 +2,14 @@ const std = @import("std");
 const c = @import("c.zig");
 const kernel = @import("xv6.zig");
 const proc = @import("proc.zig");
+const vm = @import("vm.zig");
 const print = kernel.print;
-const Proc = c.Proc;
-const PageTable = Proc.PageTable;
-const copyin = @import("vm.zig").copyin;
+const Proc = proc.Proc;
+const PageTable = vm.PageTable;
 
 /// Fetch the uint64 at addr from the current process.
 export fn fetchaddr(addr: usize, ip: *usize) c_int {
-    var p: *Proc = myproc().?;
+    var p: *Proc = Proc.myproc().?;
     if (addr >= p.sz or addr + @sizeOf(usize) > p.sz) {
         return -1;
     }
@@ -18,7 +18,7 @@ export fn fetchaddr(addr: usize, ip: *usize) c_int {
 }
 
 pub fn fetchAddr(addr: usize) usize {
-    var p: *Proc = myproc().?;
+    var p: *Proc = Proc.myproc().?;
     if (addr >= p.sz or addr + @sizeOf(usize) > p.sz) {
         @panic("fetchAddr");
     }
@@ -31,18 +31,18 @@ pub fn fetchAddr(addr: usize) usize {
 /// Fetch the nul-terminated string at addr from the current process.
 /// Returns length of string, not including nul, or -1 for error.
 export fn fetchstr(addr: usize, buf: [*:0]u8, max: usize) c_int {
-    var p: *Proc = myproc().?;
+    var p: *Proc = Proc.myproc().?;
     var str = p.pagetable.copyinstr(buf[0..max], .{ .addr = addr }) catch return -1;
     return @intCast(c_int, str.len);
 }
 
 pub fn fetchStr(addr: usize, buf: []u8) [:0]const u8 {
-    var p: *Proc = myproc().?;
+    var p: *Proc = Proc.myproc().?;
     return p.pagetable.copyinstr(buf, .{ .addr = addr }) catch unreachable;
 }
 
 pub fn arg(n: u8) usize {
-    var p: *Proc = myproc().?;
+    var p: *Proc = Proc.myproc().?;
 
     return switch (n) {
         0 => p.trapframe.?.a0,
@@ -118,10 +118,8 @@ const syscalls = blk: {
     break :blk sys_calls;
 };
 
-const myproc = proc.myproc;
-
 export fn syscall() void {
-    var p: *Proc = myproc().?;
+    var p: *Proc = Proc.myproc().?;
     var num = p.trapframe.?.a7;
 
     if (num > 0 and num < syscalls.len) {

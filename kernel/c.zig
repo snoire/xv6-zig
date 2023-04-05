@@ -1,5 +1,6 @@
 const fs = @import("fs.zig");
 const xv6 = @import("xv6.zig");
+const Proc = @import("proc.zig").Proc;
 const PGSIZE = 4096;
 const c = @This();
 
@@ -214,7 +215,7 @@ pub const Dirent = extern struct {
 };
 
 /// Saved registers for kernel context switches.
-const Context = extern struct {
+pub const Context = extern struct {
     ra: usize,
     sp: usize,
 
@@ -304,56 +305,6 @@ pub const TrapFrame = extern struct {
     t4: usize, // 264
     t5: usize, // 272
     t6: usize, // 280
-};
-
-/// Per-process state
-pub const Proc = extern struct {
-    pub const PageTable = xv6.vm.PageTable; // 512 PTEs
-
-    lock: SpinLock,
-
-    // p->lock must be held when using these:
-    /// Process state
-    state: ProcState,
-    /// If non-zero, sleeping on chan
-    chan: ?*anyopaque,
-    /// If non-zero, have been killed
-    killed: c_int,
-    /// Exit status to be returned to parent's wait
-    xstate: c_int,
-    /// Process ID
-    pid: u32,
-
-    // wait_lock must be held when using this:
-    /// Parent process
-    parent: ?*Proc,
-
-    // these are private to the process, so p->lock need not be held.
-    /// Virtual address of kernel stack
-    kstack: usize,
-    /// Size of process memory (bytes)
-    sz: usize,
-    /// User page table
-    pagetable: PageTable,
-    /// data page for trampoline.S
-    trapframe: ?*align(PGSIZE) TrapFrame,
-    /// swtch() here to run process
-    context: Context,
-    /// Open files
-    ofile: [xv6.NOFILE]?*File,
-    /// Current directory
-    cwd: ?*Inode,
-    /// Process name (debugging)
-    name: [16]u8,
-
-    const ProcState = enum(c_int) {
-        unused,
-        used,
-        sleeping,
-        runnable,
-        running,
-        zombie,
-    };
 };
 
 // trap.c

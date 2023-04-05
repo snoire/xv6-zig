@@ -3,6 +3,7 @@ const xv6 = @import("../xv6.zig");
 const c = @import("../c.zig");
 const vm = @import("../vm.zig");
 const proc = @import("../proc.zig");
+const Proc = proc.Proc;
 const kalloc = @import("../kalloc.zig");
 const PageTable = vm.PageTable;
 const ElfHdr = std.elf.Elf64_Ehdr;
@@ -29,7 +30,6 @@ export fn loadseg(
         var n = @min(sz - i, vm.PGSIZE);
         if (ip.read(false, pa.addr, offset + i, n) != n)
             @panic("loadseg_error");
-        // return error.loadseg_error;
     }
 }
 
@@ -40,11 +40,10 @@ fn flags2perm(flags: u32) vm.Pte.Flags {
     };
 }
 
-// pub extern fn exec(path: [*:0]const u8, argv: [*:null]const ?[*:0]const u8) c_int;
 const ELF_PROG_LOAD = 1;
 
 pub fn exec(path: [*:0]const u8, argv: [*:null]const ?[*:0]const u8) c_int {
-    var p = proc.myproc().?;
+    var p = Proc.myproc().?;
     c.begin_op();
 
     var ip = c.namei(path) orelse {
@@ -61,7 +60,7 @@ pub fn exec(path: [*:0]const u8, argv: [*:null]const ?[*:0]const u8) c_int {
     if (!std.mem.eql(u8, elf.e_ident[0..4], std.elf.MAGIC))
         @panic("InvalidElfMagic");
 
-    var pagetable = proc.proc_pagetable(p);
+    var pagetable = p.createPagetable();
 
     // Load program into memory.
     var sz: usize = 0;
@@ -85,7 +84,7 @@ pub fn exec(path: [*:0]const u8, argv: [*:null]const ?[*:0]const u8) c_int {
     ip.unlockput();
     c.end_op();
 
-    p = proc.myproc().?;
+    p = Proc.myproc().?;
     var oldsz: usize = p.sz;
 
     // Allocate two pages at the next page boundary.
@@ -136,7 +135,7 @@ pub fn exec(path: [*:0]const u8, argv: [*:null]const ?[*:0]const u8) c_int {
     p.sz = sz;
     p.trapframe.?.epc = elf.e_entry;
     p.trapframe.?.sp = sp;
-    proc.proc_freepagetable(oldpagetable, oldsz);
+    oldpagetable.freepagetable(oldsz);
 
     return @intCast(c_int, args.len);
 }

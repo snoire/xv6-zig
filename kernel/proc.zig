@@ -3,11 +3,12 @@ const xv6 = @import("xv6.zig");
 const gpr = xv6.register.gpr;
 const c = @import("c.zig");
 const SpinLock = @import("SpinLock.zig");
-const vm = xv6.vm;
+const vm = @import("vm.zig");
 const PageTable = vm.PageTable;
 const Address = vm.Address;
 const kalloc = xv6.kalloc;
 const print = xv6.print;
+
 const TRAMPOLINE = vm.TRAMPOLINE;
 const TRAPFRAME = vm.TRAPFRAME;
 const PGSIZE = vm.PGSIZE;
@@ -16,8 +17,8 @@ const PGSIZE = vm.PGSIZE;
 extern const trampoline: u1;
 
 var cpus: [xv6.NCPU]c.Cpu = undefined;
-var proc: [xv6.NPROC]c.Proc = undefined;
-var initproc: *c.Proc = undefined;
+var proc: [xv6.NPROC]Proc = undefined;
+var initproc: *Proc = undefined;
 
 var nextpid: u32 = 1;
 var pid_lock: SpinLock = SpinLock.init("nextpid");
@@ -28,17 +29,6 @@ var pid_lock: SpinLock = SpinLock.init("nextpid");
 /// must be acquired before any p->lock.
 var wait_lock: c.SpinLock = undefined; // TODO
 // var wait_lock: SpinLock = SpinLock.init("wait_lock");
-
-/// initialize the proc table.
-pub fn init() void {
-    wait_lock.init("wait_lock");
-
-    for (&proc, 1..) |*p, i| {
-        p.lock.init("proc");
-        p.state = .unused;
-        p.kstack = TRAMPOLINE - (i * 2 * PGSIZE);
-    }
-}
 
 /// Must be called with interrupts disabled,
 /// to prevent race with process being moved
@@ -53,12 +43,193 @@ export fn mycpu() *c.Cpu {
     return &cpus[cpuid()];
 }
 
-/// Return the current struct proc *, or zero if none.
-pub export fn myproc() ?*c.Proc {
-    SpinLock.pushOff();
-    defer SpinLock.popOff();
+/// initialize the proc table.
+pub fn init() void {
+    wait_lock.init("wait_lock");
 
-    return mycpu().proc;
+    for (&proc, 1..) |*p, i| {
+        p.lock.init("proc");
+        p.state = .unused;
+        p.kstack = TRAMPOLINE - (i * 2 * PGSIZE);
+    }
+}
+
+/// Per-process state
+pub const Proc = extern struct {
+    lock: c.SpinLock,
+
+    // p->lock must be held when using these:
+    /// Process state
+    state: ProcState,
+    /// If non-zero, sleeping on chan
+    chan: ?*anyopaque,
+    /// If non-zero, have been killed
+    killed: c_int,
+    /// Exit status to be returned to parent's wait
+    xstate: c_int,
+    /// Process ID
+    pid: u32,
+
+    // wait_lock must be held when using this:
+    /// Parent process
+    parent: ?*Proc,
+
+    // these are private to the process, so p->lock need not be held.
+    /// Virtual address of kernel stack
+    kstack: usize,
+    /// Size of process memory (bytes)
+    sz: usize,
+    /// User page table
+    pagetable: PageTable,
+    /// data page for trampoline.S
+    trapframe: ?*align(PGSIZE) c.TrapFrame,
+    /// swtch() here to run process
+    context: c.Context,
+    /// Open files
+    ofile: [xv6.NOFILE]?*c.File,
+    /// Current directory
+    cwd: ?*c.Inode,
+    /// Process name (debugging)
+    name: [16]u8,
+
+    const ProcState = enum(c_int) {
+        unused,
+        used,
+        sleeping,
+        runnable,
+        running,
+        zombie,
+    };
+
+    /// Return the current struct proc *, or zero if none.
+    pub fn myproc() ?*Proc {
+        SpinLock.pushOff();
+        defer SpinLock.popOff();
+
+        return mycpu().proc;
+    }
+
+    /// Look in the process table for an UNUSED proc.
+    /// If found, initialize state required to run in the kernel,
+    /// and return with p->lock held.
+    /// If there are no free procs, or a memory allocation fails, return 0.
+    fn allocproc() ?*Proc {
+        var p: *Proc = for (&proc) |*p| {
+            p.lock.acquire();
+
+            if (p.state == .unused) {
+                break p;
+            } else {
+                p.lock.release();
+            }
+        } else {
+            return null;
+        };
+
+        p.pid = allocpid();
+        p.state = .used;
+
+        // Allocate a trapframe page.
+        p.trapframe = @ptrCast(*c.TrapFrame, kalloc.kalloc());
+
+        // An empty user page table.
+        p.pagetable = createPagetable(p);
+
+        // Set up new context to start executing at forkret,
+        // which returns to user space.
+        std.mem.set(u8, std.mem.asBytes(&p.context), 0);
+        p.context.ra = @ptrToInt(&forkret);
+        p.context.sp = p.kstack + PGSIZE;
+
+        return p;
+    }
+
+    /// Create a user page table for a given process, with no user memory,
+    /// but with trampoline and trapframe pages.
+    pub fn createPagetable(p: *Proc) PageTable {
+        // An empty page table.
+        var pagetable = PageTable.create();
+
+        // map the trampoline code (for system call return)
+        // at the highest user virtual address.
+        // only the supervisor uses it, on the way
+        // to/from user space, so not PTE_U.
+        pagetable.mappages(.{ .addr = TRAMPOLINE }, PGSIZE, .{ .addr = @ptrToInt(&trampoline) }, .{
+            .readable = true,
+            .executable = true,
+        });
+
+        // map the trapframe page just below the trampoline page, for
+        // trampoline.S.
+        pagetable.mappages(.{ .addr = TRAPFRAME }, PGSIZE, .{ .addr = @ptrToInt(p.trapframe) }, .{
+            .readable = true,
+            .writable = true,
+        });
+
+        return pagetable;
+    }
+
+    /// free a proc structure and the data hanging from it,
+    /// including user pages.
+    /// p->lock must be held.
+    fn freeproc(p: *Proc) void {
+        if (p.trapframe != null) {
+            kalloc.kfree(@ptrCast(*align(PGSIZE) kalloc.Page, p.trapframe.?));
+            p.trapframe = null;
+        }
+
+        if (p.pagetable.ptes != null) {
+            p.pagetable.freepagetable(p.sz);
+            p.pagetable.ptes = null;
+        }
+        p.sz = 0;
+        p.pid = 0;
+        p.parent = null;
+        p.name[0] = 0;
+        p.chan = null;
+        p.killed = 0;
+        p.xstate = 0;
+        p.state = .unused;
+    }
+
+    /// Pass p's abandoned children to init.
+    /// Caller must hold wait_lock.
+    fn reparent(p: *Proc) void {
+        for (&proc) |*pp| {
+            if (pp.parent == p) {
+                pp.parent = initproc;
+                wakeup(initproc);
+            }
+        }
+    }
+
+    fn setKilled(p: *Proc) void {
+        p.lock.acquire();
+        defer p.lock.release();
+
+        p.killed = 1;
+    }
+
+    pub fn isKilled(p: *Proc) bool {
+        p.lock.acquire();
+        defer p.lock.release();
+
+        var k = p.killed;
+        return if (k != 0) true else false;
+    }
+};
+
+/// Return the current struct proc *, or zero if none.
+export fn myproc() ?*Proc {
+    return Proc.myproc();
+}
+
+export fn setkilled(p: *Proc) void {
+    p.setKilled();
+}
+
+export fn killed(p: *Proc) c_int {
+    return if (p.isKilled()) 1 else 0;
 }
 
 fn allocpid() u32 {
@@ -68,97 +239,6 @@ fn allocpid() u32 {
     var pid = nextpid;
     nextpid += 1;
     return pid;
-}
-
-/// Look in the process table for an UNUSED proc.
-/// If found, initialize state required to run in the kernel,
-/// and return with p->lock held.
-/// If there are no free procs, or a memory allocation fails, return 0.
-fn allocproc() ?*c.Proc {
-    var p: *c.Proc = for (&proc) |*p| {
-        p.lock.acquire();
-
-        if (p.state == .unused) {
-            break p;
-        } else {
-            p.lock.release();
-        }
-    } else {
-        return null;
-    };
-
-    p.pid = allocpid();
-    p.state = .used;
-
-    // Allocate a trapframe page.
-    p.trapframe = @ptrCast(*c.TrapFrame, kalloc.kalloc());
-
-    // An empty user page table.
-    p.pagetable = proc_pagetable(p);
-
-    // Set up new context to start executing at forkret,
-    // which returns to user space.
-    std.mem.set(u8, std.mem.asBytes(&p.context), 0);
-    p.context.ra = @ptrToInt(&forkret);
-    p.context.sp = p.kstack + PGSIZE;
-
-    return p;
-}
-
-/// Create a user page table for a given process, with no user memory,
-/// but with trampoline and trapframe pages.
-pub export fn proc_pagetable(p: *c.Proc) PageTable {
-    // An empty page table.
-    var pagetable = PageTable.create();
-
-    // map the trampoline code (for system call return)
-    // at the highest user virtual address.
-    // only the supervisor uses it, on the way
-    // to/from user space, so not PTE_U.
-    pagetable.mappages(.{ .addr = TRAMPOLINE }, PGSIZE, .{ .addr = @ptrToInt(&trampoline) }, .{
-        .readable = true,
-        .executable = true,
-    });
-
-    // map the trapframe page just below the trampoline page, for
-    // trampoline.S.
-    pagetable.mappages(.{ .addr = TRAPFRAME }, PGSIZE, .{ .addr = @ptrToInt(p.trapframe) }, .{
-        .readable = true,
-        .writable = true,
-    });
-
-    return pagetable;
-}
-
-/// free a proc structure and the data hanging from it,
-/// including user pages.
-/// p->lock must be held.
-fn freeproc(p: *c.Proc) void {
-    if (p.trapframe != null) {
-        kalloc.kfree(@ptrCast(*align(PGSIZE) kalloc.Page, p.trapframe.?));
-        p.trapframe = null;
-    }
-
-    if (p.pagetable.ptes != null) {
-        proc_freepagetable(p.pagetable, p.sz);
-        p.pagetable.ptes = null;
-    }
-    p.sz = 0;
-    p.pid = 0;
-    p.parent = null;
-    p.name[0] = 0;
-    p.chan = null;
-    p.killed = 0;
-    p.xstate = 0;
-    p.state = .unused;
-}
-
-/// Free a process's page table, and free the
-/// physical memory it refers to.
-pub export fn proc_freepagetable(pagetable: PageTable, sz: usize) void {
-    pagetable.unmap(.{ .addr = TRAMPOLINE }, 1, false);
-    pagetable.unmap(.{ .addr = TRAPFRAME }, 1, false);
-    pagetable.free(sz);
 }
 
 /// a user program that calls exec("/init")
@@ -176,10 +256,8 @@ const initcode = [_]u8{
 };
 // zig fmt: on
 
-extern fn namei(name: [*:0]const u8) *c.Inode;
-
 pub fn userinit() void {
-    var p = allocproc().?;
+    var p = Proc.allocproc().?;
     initproc = p;
 
     // allocate one user page and copy initcode's instructions
@@ -192,7 +270,7 @@ pub fn userinit() void {
     p.trapframe.?.sp = PGSIZE; // user stack pointer
 
     std.mem.copy(u8, p.name[0..], "initcode");
-    p.cwd = namei("/");
+    p.cwd = c.namei("/");
     p.state = .runnable;
 
     p.lock.release();
@@ -201,7 +279,7 @@ pub fn userinit() void {
 /// Grow or shrink user memory by n bytes.
 /// Return 0 on success, -1 on failure.
 pub fn growproc(n: i32) c_int {
-    var p = myproc().?;
+    var p = Proc.myproc().?;
     var sz = p.sz;
 
     if (n > 0) {
@@ -221,8 +299,8 @@ pub fn growproc(n: i32) c_int {
 // Sets up child kernel stack to return as if from fork() system call.
 pub fn fork() u32 {
     // Allocate process.
-    var p = myproc().?;
-    var np = allocproc().?;
+    var p = Proc.myproc().?;
+    var np = Proc.allocproc().?;
 
     // Copy user memory from parent to child.
     p.pagetable.copy(np.pagetable, p.sz);
@@ -261,22 +339,11 @@ pub fn fork() u32 {
     return pid;
 }
 
-/// Pass p's abandoned children to init.
-/// Caller must hold wait_lock.
-fn reparent(p: *c.Proc) void {
-    for (&proc) |*pp| {
-        if (pp.parent == p) {
-            pp.parent = initproc;
-            wakeup(initproc);
-        }
-    }
-}
-
 /// Exit the current process.  Does not return.
 /// An exited process remains in the zombie state
 /// until its parent calls wait().
 pub export fn exit(status: i32) void {
-    var p = myproc().?;
+    var p = Proc.myproc().?;
     if (p == initproc) @panic("init exiting");
 
     // Close all open files.
@@ -296,7 +363,7 @@ pub export fn exit(status: i32) void {
     wait_lock.acquire();
 
     // Give any children to init.
-    reparent(p);
+    p.reparent();
 
     // Parent might be sleeping in wait().
     wakeup(p.parent.?);
@@ -316,7 +383,7 @@ pub export fn exit(status: i32) void {
 /// Wait for a child process to exit and return its pid.
 /// Return -1 if this process has no children.
 pub fn wait(addr: usize) u32 {
-    var p = myproc().?;
+    var p = Proc.myproc().?;
 
     wait_lock.acquire();
     defer wait_lock.release();
@@ -343,11 +410,11 @@ pub fn wait(addr: usize) u32 {
 
             if (addr > 0 and ret != 0) @panic("wait");
 
-            freeproc(pp);
+            pp.freeproc();
             return pid;
         } else {
             // No point waiting if we don't have any children.
-            if (!havekids or killed(p) != 0) {
+            if (!havekids or p.isKilled()) {
                 @panic("have no children");
             }
 
@@ -400,7 +467,7 @@ pub fn scheduler() void {
 /// break in the few places where a lock is held but
 /// there's no process.
 export fn sched() void {
-    var p = myproc().?;
+    var p = Proc.myproc().?;
 
     if (!p.lock.holding()) @panic("sched p->lock");
     if (mycpu().noff != 1) @panic("sched locks");
@@ -414,7 +481,7 @@ export fn sched() void {
 
 /// Give up the CPU for one scheduling round.
 export fn yield() void {
-    var p = myproc().?;
+    var p = Proc.myproc().?;
     p.lock.acquire();
     defer p.lock.release();
 
@@ -430,7 +497,7 @@ fn forkret() void {
         var first: bool = true;
     };
 
-    myproc().?.lock.release();
+    Proc.myproc().?.lock.release();
 
     if (S.first) {
         S.first = false;
@@ -453,7 +520,7 @@ pub export fn sleep(chan: *anyopaque, lk: *c.SpinLock) void {
     // guaranteed that we won't miss any wakeup
     // (wakeup locks p->lock),
     // so it's okay to release lk.
-    var p = myproc().?;
+    var p = Proc.myproc().?;
     p.lock.acquire();
     lk.release();
 
@@ -474,7 +541,7 @@ pub export fn sleep(chan: *anyopaque, lk: *c.SpinLock) void {
 /// Must be called without any p->lock.
 export fn wakeup(chan: *anyopaque) void {
     for (&proc) |*p| {
-        if (p == myproc()) continue;
+        if (p == Proc.myproc()) continue;
 
         p.lock.acquire();
         defer p.lock.release();
@@ -505,26 +572,11 @@ pub export fn kill(pid: u32) c_int {
     return -1;
 }
 
-export fn setkilled(p: *c.Proc) void {
-    p.lock.acquire();
-    defer p.lock.release();
-
-    p.killed = 1;
-}
-
-pub export fn killed(p: *c.Proc) c_int {
-    p.lock.acquire();
-    defer p.lock.release();
-
-    var k = p.killed;
-    return k;
-}
-
 /// Copy to either a user address, or kernel address,
 /// depending on usr_dst.
 /// Returns 0 on success, -1 on error.
 export fn either_copyout(user_dst: bool, dst: Address, src: [*]const u8, len: usize) c_int {
-    var p = myproc().?;
+    var p = Proc.myproc().?;
     if (user_dst) {
         return p.pagetable.copyout(dst.vir_addr, src, len);
     } else {
@@ -537,7 +589,7 @@ export fn either_copyout(user_dst: bool, dst: Address, src: [*]const u8, len: us
 /// depending on usr_src.
 /// Returns 0 on success, -1 on error.
 export fn either_copyin(dst: [*]u8, user_src: bool, src: Address, len: usize) c_int {
-    var p = myproc().?;
+    var p = Proc.myproc().?;
     if (user_src) {
         return p.pagetable.copyin(dst, src.vir_addr, len);
     } else {

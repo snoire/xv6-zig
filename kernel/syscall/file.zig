@@ -5,12 +5,13 @@ const syscall = @import("../syscall.zig");
 const proc = @import("../proc.zig");
 const kalloc = @import("../kalloc.zig");
 const execv = @import("exec.zig").exec;
+const Proc = proc.Proc;
 
 /// Fetch the nth word-sized system call argument as a file descriptor
 /// and return the corresponding struct file.
 fn argfile(n: u8) *c.File {
     var fd = syscall.argint(n);
-    var f = proc.myproc().?.ofile[fd];
+    var f = Proc.myproc().?.ofile[fd];
 
     if (fd < 0 or fd >= xv6.NOFILE or f == null)
         @panic("argfile");
@@ -21,7 +22,7 @@ fn argfile(n: u8) *c.File {
 /// Allocate a file descriptor for the given file.
 /// Takes over file reference from caller on success.
 fn fdalloc(f: *c.File) u32 {
-    var p = proc.myproc().?;
+    var p = Proc.myproc().?;
 
     return for (&p.ofile, 0..) |*ofile, i| {
         if (ofile.* == null) {
@@ -55,7 +56,7 @@ pub fn write() callconv(.C) isize {
 pub fn close() callconv(.C) isize {
     var fd = syscall.argint(0);
     var f = argfile(0); // user pointer to struct stat
-    proc.myproc().?.ofile[fd] = null;
+    Proc.myproc().?.ofile[fd] = null;
     f.close();
     return 0;
 }
@@ -285,7 +286,7 @@ pub fn mknod() callconv(.C) isize {
 }
 
 pub fn chdir() callconv(.C) isize {
-    var p = proc.myproc().?;
+    var p = Proc.myproc().?;
 
     c.begin_op();
 
@@ -344,7 +345,7 @@ pub fn pipe() callconv(.C) isize {
     var fd1 = fdalloc(wf);
     if (fd1 < 0) @panic("fd1 < 0");
 
-    var p = proc.myproc().?;
+    var p = Proc.myproc().?;
     var fdarray = syscall.argaddr(0);
 
     var ret = p.pagetable.copyout(
