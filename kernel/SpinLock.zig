@@ -32,7 +32,7 @@ fn holding(self: *Self) bool {
 pub fn acquire(self: *Self) void {
     pushOff(); // disable interrupts to avoid deadlock.
 
-    if (self.holding()) @panic("acquire");
+    if (self.holding()) @panic("deadlock");
 
     // compare exchange is sorta semantically equivalent to the following atomically:
     // ```

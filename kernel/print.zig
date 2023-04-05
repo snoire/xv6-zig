@@ -73,10 +73,14 @@ pub fn panicFn(msg: []const u8, _: ?*std.builtin.StackTrace, return_addr: ?usize
     const first_ret_addr = return_addr orelse @returnAddress();
     var it = std.debug.StackIterator.init(first_ret_addr, null);
 
-    print("Stack Trace:\n", .{});
+    print(
+        \\Use the following command to get information about the stack trace:
+        \\  zig build addr2line (other options when running xv6) --
+    , .{});
     while (it.next()) |ret_addr| {
-        print(" 0x{x}\n", .{ret_addr});
+        print(" 0x{x}", .{ret_addr});
     }
+    print("\n", .{});
 
     panicked = 1; // freeze uart output from other CPUs
     while (true) {}

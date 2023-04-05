@@ -5,67 +5,30 @@
 const std = @import("std");
 const c = @import("c.zig");
 const SpinLock = @import("SpinLock.zig");
+const PageAllocator = @import("PageAllocator.zig");
+const allocator = std.heap.page_allocator;
 
 pub const PGSIZE = 4096;
 pub const Page = [PGSIZE]u8;
 
+pub const TOTAL_BYTES = 128 * 1024 * 1024;
 pub const KERNBASE = 0x80000000;
-pub const PHYSTOP = KERNBASE + 64 * 1024 * 1024;
-
-/// first address after kernel.
-/// defined by kernel.ld.
-extern const heap_start: u8;
-
-const Run = extern struct {
-    next: ?*align(PGSIZE) Run,
-};
-
-var lock: SpinLock = SpinLock.init("kmem");
-var freelist: ?*align(PGSIZE) Run = null;
+pub const PHYSTOP = KERNBASE + TOTAL_BYTES;
 
 pub fn init() void {
-    const heap_addr = @ptrToInt(&heap_start);
-    const heap = @intToPtr([*]align(PGSIZE) Page, heap_addr);
-    const pages = heap[0 .. (PHYSTOP - heap_addr) / PGSIZE];
-
-    for (pages) |*page| {
-        kfree(page);
-    }
-
-    // test page_allocator
-    const PageAllocator = @import("PageAllocator.zig");
     PageAllocator.init();
-
-    const allocator = std.heap.page_allocator;
-    const mem1 = allocator.alloc(u8, 100) catch unreachable;
-
-    const mem2 = allocator.alloc(u8, 4098) catch unreachable;
-    allocator.free(mem1);
-    const mem3 = allocator.alloc(u8, 4096 * 2 + 1) catch unreachable;
-
-    allocator.free(mem2);
-    allocator.free(mem3);
 }
 
 /// Allocate one 4096-byte page of physical memory.
 /// Returns a pointer that the kernel can use.
 /// Panic if the memory cannot be allocated.
 pub export fn kalloc() *align(PGSIZE) Page {
-    var page: *align(PGSIZE) Page = blk: {
-        lock.acquire();
-        defer lock.release();
-
-        if (freelist) |r| {
-            freelist = r.next;
-            break :blk @ptrCast(*align(PGSIZE) Page, r);
-        } else {
-            @panic("OOM!");
-        }
-    };
+    var page = allocator.create(Page) catch @panic("OOM!");
 
     // clear the page
     std.mem.set(u8, page, 0);
-    return page;
+
+    return @alignCast(PGSIZE, page);
 }
 
 /// Free the page of physical memory pointed at by `page`,
@@ -73,16 +36,8 @@ pub export fn kalloc() *align(PGSIZE) Page {
 /// call to kalloc().  (The exception is when
 /// initializing the allocator; see kinit above.)
 pub export fn kfree(page: *align(PGSIZE) Page) void {
-    const addr = @ptrToInt(page);
-    if (addr < @ptrToInt(&heap_start) or addr >= PHYSTOP) @panic("kfree");
-
     // Fill with junk to catch dangling refs.
     std.mem.set(u8, page, 1);
 
-    lock.acquire();
-    defer lock.release();
-
-    var r = @ptrCast(*align(PGSIZE) Run, page);
-    r.next = freelist;
-    freelist = r;
+    allocator.destroy(page);
 }

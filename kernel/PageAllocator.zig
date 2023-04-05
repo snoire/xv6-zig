@@ -2,7 +2,6 @@ const std = @import("std");
 const assert = std.debug.assert;
 const maxInt = std.math.maxInt;
 const mem = std.mem;
-const print = @import("xv6.zig").print;
 const Allocator = std.mem.Allocator;
 const SpinLock = @import("SpinLock.zig");
 
@@ -27,20 +26,13 @@ const Run = extern struct {
     next: ?*align(PGSIZE) Run,
 };
 
-var lock: SpinLock = SpinLock.init("kmem");
+var lock: SpinLock = SpinLock.init("PageAllocator");
 var freelist: ?*align(PGSIZE) Run = null;
 
 pub fn init() void {
-    // const heap_addr = @ptrToInt(&heap_start);
-    const heap_addr = KERNBASE + 64 * 1024 * 1024; // TODO
+    const heap_addr = @ptrToInt(&heap_start);
     const heap = @intToPtr([*]align(PGSIZE) Page, heap_addr);
     const pages = heap[0 .. (PHYSTOP - heap_addr) / PGSIZE];
-    print("pages.len {}\n", .{pages.len});
-    print(
-        \\first page: {*}
-        \\last  page: {*}
-        \\
-    , .{ &pages[0], &pages[64 * 1024 * 1024 / 4096 - 1] });
 
     // the first page
     freelist = @ptrCast(*align(PGSIZE) Run, &pages[0]);
@@ -102,32 +94,6 @@ fn alloc(_: *anyopaque, n: usize, log2_align: u8, ra: usize) ?[*]u8 {
         previous.?.next = next;
     }
 
-    print(
-        \\alloc: {} pages
-        \\  start: {*}
-        \\  next: {*}
-        \\
-    , .{ npages, start, next });
-
-    print(
-        \\dump: freelist: {*}
-        \\  [1]: {*}
-        \\  [2]: {*}
-        \\  [3]: {*}
-        \\  [4]: {*}
-        \\  [5]: {*}
-        \\  [6]: {*}
-        \\
-    , .{
-        freelist,
-        freelist.?.next,
-        freelist.?.next.?.next,
-        freelist.?.next.?.next.?.next,
-        freelist.?.next.?.next.?.next.?.next,
-        freelist.?.next.?.next.?.next.?.next.?.next,
-        freelist.?.next.?.next.?.next.?.next.?.next.?.next,
-    });
-
     return @ptrCast([*]u8, start.?);
 }
 
@@ -169,9 +135,13 @@ fn free(_: *anyopaque, slice: []u8, log2_buf_align: u8, return_address: usize) v
     } else {
         var previous = blk: {
             var ptr = freelist;
-            while (true) : (ptr = ptr.?.next) {
-                if (@ptrToInt(ptr.?) == addr - PGSIZE) break :blk ptr.?;
+            var prev = freelist;
+
+            while (@ptrToInt(ptr.?) <= addr - PGSIZE) : (ptr = ptr.?.next) {
+                prev = ptr;
             }
+
+            break :blk prev.?;
         };
 
         next = previous.next;
@@ -186,29 +156,4 @@ fn free(_: *anyopaque, slice: []u8, log2_buf_align: u8, return_address: usize) v
     }
 
     ptr.next = next;
-
-    print(
-        \\free: {} pages
-        \\  start: {*}
-        \\
-    , .{ npages, start });
-
-    print(
-        \\dump: freelist: {*}
-        \\  [1]: {*}
-        \\  [2]: {*}
-        \\  [3]: {*}
-        \\  [4]: {*}
-        \\  [5]: {*}
-        \\  [6]: {*}
-        \\
-    , .{
-        freelist,
-        freelist.?.next,
-        freelist.?.next.?.next,
-        freelist.?.next.?.next.?.next,
-        freelist.?.next.?.next.?.next.?.next,
-        freelist.?.next.?.next.?.next.?.next.?.next,
-        freelist.?.next.?.next.?.next.?.next.?.next.?.next,
-    });
 }
