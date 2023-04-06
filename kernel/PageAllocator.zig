@@ -137,8 +137,11 @@ fn free(_: *anyopaque, slice: []u8, log2_buf_align: u8, return_address: usize) v
             var ptr = freelist;
             var prev = freelist;
 
-            while (@ptrToInt(ptr.?) <= addr - PGSIZE) : (ptr = ptr.?.next) {
+            while (@ptrToInt(ptr.?) <= addr - PGSIZE) {
                 prev = ptr;
+
+                ptr = ptr.?.next;
+                if (ptr == null) break;
             }
 
             break :blk prev.?;
