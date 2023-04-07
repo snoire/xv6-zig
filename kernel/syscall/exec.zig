@@ -127,7 +127,11 @@ pub fn exec(path: [*:0]const u8, argv: [*:null]const ?[*:0]const u8) !c_int {
     p.trapframe.?.a1 = sp;
 
     // Save program name for debugging.
-    std.mem.copy(u8, &p.name, std.fs.path.basename(std.mem.span(path)));
+    const program_name = blk: {
+        const name1 = std.fs.path.basename(std.mem.span(path));
+        break :blk @ptrCast([:0]const u8, name1);
+    };
+    std.mem.copy(u8, &p.name, program_name[0 .. program_name.len + 1]);
 
     // Commit to the user image.
     var oldpagetable = p.pagetable;
