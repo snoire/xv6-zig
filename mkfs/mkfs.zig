@@ -2,7 +2,7 @@ const std = @import("std");
 const kernel = @import("kernel");
 const c = kernel.c;
 const fs = kernel.fs;
-const print = std.debug.print;
+const stdout = std.io.getStdOut().writer();
 const assert = std.debug.assert;
 const toLittle = std.mem.nativeToLittle; // convert to riscv byte order
 
@@ -107,7 +107,7 @@ const Disk = struct {
     fn writeInode(self: Disk, inode: Inode) void {
         const sector_number = inode.number / fs.IPB + superblk.inodestart;
         const offset = (inode.number % fs.IPB) * @sizeOf(Dinode);
-        _ = self.writeSector(sector_number, offset, std.mem.asBytes(&inode.dinode())) catch @panic("winode error");
+        _ = self.writeSector(sector_number, offset, std.mem.asBytes(&inode.dinode())) catch |err| @panic(@errorName(err));
     }
 
     /// Return the disk block address of the nth block in inode.
@@ -205,7 +205,7 @@ const Disk = struct {
 
     /// write to bitmap
     fn writeBitmap(self: Disk) !void {
-        print("balloc: first {} blocks have been allocated\n", .{self.freeblock});
+        try stdout.print("balloc: first {} blocks have been allocated\n", .{self.freeblock});
         assert(self.freeblock < fs.BSIZE * 8);
 
         var buf: [fs.BSIZE]u8 = .{0} ** fs.BSIZE;
@@ -214,7 +214,7 @@ const Disk = struct {
             buf[i / 8] |= @as(u8, 0x1) << @intCast(u3, i % 8);
         }
 
-        print("balloc: write bitmap block at sector {}\n", .{superblk.bmapstart});
+        try stdout.print("balloc: write bitmap block at sector {}\n", .{superblk.bmapstart});
         _ = try self.writeSector(superblk.bmapstart, 0, &buf);
     }
 };
@@ -228,11 +228,11 @@ pub fn main() !void {
     defer allocator.free(args);
 
     if (args.len < 2) {
-        print("Usage: {s} fs.img files...\n", .{args[0]});
+        try stdout.print("Usage: {s} fs.img files...\n", .{args[0]});
         return;
     }
 
-    print(
+    try stdout.print(
         "nmeta {} (boot, super, log blocks {} inode blocks {}, bitmap blocks {}) blocks {} total {}\n",
         .{ nmeta, nlog, ninodeblocks, nbitmap, nblocks, kernel.FSSIZE },
     );
