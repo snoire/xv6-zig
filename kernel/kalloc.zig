@@ -22,7 +22,7 @@ pub fn init() void {
 /// Allocate one 4096-byte page of physical memory.
 /// Returns a pointer that the kernel can use.
 /// Panic if the memory cannot be allocated.
-pub export fn kalloc() *align(PGSIZE) Page {
+export fn kalloc() *align(PGSIZE) Page {
     var page = allocator.create(Page) catch |err| @panic(@errorName(err));
 
     // clear the page
@@ -35,7 +35,7 @@ pub export fn kalloc() *align(PGSIZE) Page {
 /// which normally should have been returned by a
 /// call to kalloc().  (The exception is when
 /// initializing the allocator; see kinit above.)
-pub export fn kfree(page: *align(PGSIZE) Page) void {
+export fn kfree(page: *align(PGSIZE) Page) void {
     // Fill with junk to catch dangling refs.
     std.mem.set(u8, page, 1);
 

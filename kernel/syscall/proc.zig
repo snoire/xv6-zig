@@ -13,7 +13,7 @@ pub fn getpid() callconv(.C) isize {
 }
 
 pub fn fork() callconv(.C) isize {
-    return proc.fork();
+    return proc.fork() catch |err| @panic(@errorName(err));
 }
 
 pub fn wait() callconv(.C) isize {

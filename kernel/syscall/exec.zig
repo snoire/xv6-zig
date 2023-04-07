@@ -14,7 +14,7 @@ const PGSIZE = 4096;
 /// va must be page-aligned
 /// and the pages from va to va+sz must already be mapped.
 /// Returns 0 on success, -1 on failure.
-export fn loadseg(
+fn loadseg(
     pagetable: vm.PageTable,
     va: vm.VirAddr,
     ip: *c.Inode,
@@ -42,7 +42,7 @@ fn flags2perm(flags: u32) vm.Pte.Flags {
 
 const ELF_PROG_LOAD = 1;
 
-pub fn exec(path: [*:0]const u8, argv: [*:null]const ?[*:0]const u8) c_int {
+pub fn exec(path: [*:0]const u8, argv: [*:null]const ?[*:0]const u8) !c_int {
     var p = Proc.myproc().?;
     c.begin_op();
 
@@ -60,7 +60,7 @@ pub fn exec(path: [*:0]const u8, argv: [*:null]const ?[*:0]const u8) c_int {
     if (!std.mem.eql(u8, elf.e_ident[0..4], std.elf.MAGIC))
         @panic("InvalidElfMagic");
 
-    var pagetable = p.createPagetable();
+    var pagetable = try p.createPagetable();
 
     // Load program into memory.
     var sz: usize = 0;
@@ -75,7 +75,7 @@ pub fn exec(path: [*:0]const u8, argv: [*:null]const ?[*:0]const u8) c_int {
         if (ph.p_vaddr + ph.p_memsz < ph.p_vaddr) @panic("p_vaddr");
         if (!std.mem.isAligned(ph.p_vaddr, kalloc.PGSIZE)) @panic("not aligned");
 
-        sz = pagetable.uvmalloc(sz, ph.p_vaddr + ph.p_memsz, flags2perm(ph.p_flags));
+        sz = pagetable.alloc(sz, ph.p_vaddr + ph.p_memsz, flags2perm(ph.p_flags));
 
         loadseg(pagetable, .{ .addr = ph.p_vaddr }, ip, ph.p_offset, ph.p_filesz);
         off += @sizeOf(ProgHdr);
@@ -91,10 +91,10 @@ pub fn exec(path: [*:0]const u8, argv: [*:null]const ?[*:0]const u8) c_int {
     // Make the first inaccessible as a stack guard.
     // Use the second as the user stack.
     sz = std.mem.alignForward(sz, PGSIZE);
-    var sz1 = pagetable.uvmalloc(sz, sz + 2 * PGSIZE, .{ .writable = true });
+    var sz1 = pagetable.alloc(sz, sz + 2 * PGSIZE, .{ .writable = true });
 
     sz = sz1;
-    pagetable.uvmclear(.{ .addr = sz - 2 * PGSIZE });
+    pagetable.clear(.{ .addr = sz - 2 * PGSIZE });
     var sp = sz;
     var stackbase = sp - PGSIZE;
 

@@ -1,15 +1,19 @@
 const std = @import("std");
 const xv6 = @import("xv6.zig");
 const csr = xv6.register.csr;
-const kalloc = @import("kalloc.zig");
 const assert = std.debug.assert;
 const proc = @import("proc.zig");
-const Page = kalloc.Page;
 const alignBackward = std.mem.alignBackward;
+const allocator = std.heap.page_allocator;
 
 pub const PGSIZE = 4096;
+pub const Page = [PGSIZE]u8;
 pub const TRAMPOLINE = VirAddr.MAXVA - PGSIZE;
 pub const TRAPFRAME = TRAMPOLINE - PGSIZE;
+
+pub const TOTAL_BYTES = 128 * 1024 * 1024;
+pub const KERNBASE = 0x80000000;
+pub const PHYSTOP = KERNBASE + TOTAL_BYTES;
 
 /// kernel.ld sets this to end of kernel code.
 extern const etext: u1;
@@ -91,9 +95,13 @@ pub const PhyAddr = packed union {
 
     const Self = @This();
 
-    pub fn create() Self {
+    // TODO: maybe we don't need it
+    pub fn create() !Self {
+        const page = try allocator.create(Page);
+        std.mem.set(u8, page, 0);
+
         return .{
-            .page = kalloc.kalloc(),
+            .page = @alignCast(PGSIZE, page),
         };
     }
 };
@@ -107,19 +115,19 @@ pub const PageTable = packed union {
 
     const Self = @This();
 
-    pub fn create() Self {
+    pub fn create() !Self {
+        const page = try allocator.create(Page);
+        std.mem.set(u8, page, 0);
+
         return .{
-            .page = kalloc.kalloc(),
+            .page = @alignCast(PGSIZE, page),
         };
     }
 
-    const WalkError = error{
-        NotFound,
-    };
     /// Return the address of the PTE in page table pagetable
     /// that corresponds to virtual address va. If alloc==true,
     /// create any required page-table pages.
-    fn walk(pagetable: PageTable, va: VirAddr, comptime alloc: bool) if (alloc) *Pte else WalkError!*Pte {
+    fn walk(pagetable: PageTable, va: VirAddr, comptime is_alloc: bool) !*Pte {
         if (va.addr >= VirAddr.MAXVA) @panic("walk");
 
         var pt = pagetable;
@@ -131,8 +139,8 @@ pub const PageTable = packed union {
             if (pte.flags.valid) {
                 pt = pte.getPageTable();
             } else {
-                if (!alloc) return error.NotFound;
-                pt = PageTable.create();
+                if (!is_alloc) return error.NotFound;
+                pt = try PageTable.create();
                 pte.ppn = pt.phy.ppn;
                 pte.flags.valid = true;
             }
@@ -179,7 +187,7 @@ pub const PageTable = packed union {
         const last = alignBackward(vaddress.addr + size - 1, PGSIZE);
 
         while (true) {
-            var pte = pagetable.walk(va, true);
+            var pte = pagetable.walk(va, true) catch unreachable;
             if (pte.flags.valid) @panic("mappages: remap");
 
             pte.ppn = pa.phy.ppn;
@@ -206,7 +214,7 @@ pub const PageTable = packed union {
                 @panic("uvmunmap: not a leaf");
             }
             if (do_free) {
-                kalloc.kfree(pte.getPhy().page);
+                allocator.destroy(pte.getPhy().page);
             }
             pte.* = .{};
         }
@@ -218,7 +226,7 @@ pub const PageTable = packed union {
     pub fn first(pagetable: PageTable, src: []const u8) void {
         if (src.len >= PGSIZE) @panic("uvmfirst: more than a page");
 
-        var mem = PhyAddr.create();
+        var mem = PhyAddr.create() catch unreachable;
         pagetable.mappages(.{ .addr = 0 }, PGSIZE, mem, .{
             .writable = true,
             .readable = true,
@@ -231,7 +239,7 @@ pub const PageTable = packed union {
 
     /// Allocate PTEs and physical memory to grow process from oldsz to
     /// newsz, which need not be page aligned.  Returns new size or panic on error.
-    pub export fn uvmalloc(pagetable: PageTable, oldsz: usize, newsz: usize, xperm: Pte.Flags) usize {
+    pub fn alloc(pagetable: PageTable, oldsz: usize, newsz: usize, xperm: Pte.Flags) usize {
         if (newsz < oldsz) return oldsz;
 
         var flags = xperm;
@@ -240,7 +248,7 @@ pub const PageTable = packed union {
 
         var addr = std.mem.alignForward(oldsz, PGSIZE);
         while (addr < newsz) : (addr += PGSIZE) {
-            var mem = PhyAddr.create();
+            var mem = PhyAddr.create() catch |err| @panic(@errorName(err));
             pagetable.mappages(.{ .addr = addr }, PGSIZE, mem, flags);
         }
         return newsz;
@@ -278,7 +286,7 @@ pub const PageTable = packed union {
             pte.* = .{};
         }
 
-        kalloc.kfree(pagetable.page);
+        allocator.destroy(pagetable.page);
     }
 
     /// Free user memory pages,
@@ -292,15 +300,14 @@ pub const PageTable = packed union {
     /// its memory into a child's page table.
     /// Copies both the page table and the
     /// physical memory.
-    /// panic on failure.
-    pub fn copy(old_pagetable: PageTable, new_pagetable: PageTable, sz: usize) void {
+    pub fn copy(old_pagetable: PageTable, new_pagetable: PageTable, sz: usize) !void {
         var i: usize = 0;
         while (i < sz) : (i += PGSIZE) {
             var pte = walk(old_pagetable, .{ .addr = i }, false) catch unreachable;
             if (!pte.flags.valid) @panic("uvmcopy: page not present");
 
             var pa = pte.getPhy();
-            var mem = PhyAddr.create();
+            var mem = try PhyAddr.create();
 
             std.mem.copy(u8, mem.page, pa.page);
             mappages(new_pagetable, .{ .addr = i }, PGSIZE, mem, pte.flags);
@@ -309,7 +316,7 @@ pub const PageTable = packed union {
 
     /// mark a PTE invalid for user access.
     /// used by exec for the user stack guard page.
-    pub export fn uvmclear(pagetable: PageTable, va: VirAddr) void {
+    pub fn clear(pagetable: PageTable, va: VirAddr) void {
         var pte = pagetable.walk(va, false) catch unreachable;
         pte.flags.user = false;
     }
@@ -438,7 +445,7 @@ pub fn init() void {
     const etext_addr = @ptrToInt(&etext);
     const trampoline_addr = @ptrToInt(&trampoline);
 
-    kernel_pagetable = PageTable.create();
+    kernel_pagetable = PageTable.create() catch unreachable;
 
     // uart registers
     kvmmap(xv6.UART0, PGSIZE, .{
@@ -459,13 +466,13 @@ pub fn init() void {
     });
 
     // map kernel text executable and read-only.
-    kvmmap(kalloc.KERNBASE, etext_addr - kalloc.KERNBASE, .{
+    kvmmap(KERNBASE, etext_addr - KERNBASE, .{
         .readable = true,
         .executable = true,
     });
 
     // map kernel data and the physical RAM we'll make use of.
-    kvmmap(etext_addr, kalloc.PHYSTOP - etext_addr, .{
+    kvmmap(etext_addr, PHYSTOP - etext_addr, .{
         .readable = true,
         .writable = true,
     });
@@ -484,7 +491,7 @@ pub fn init() void {
         kernel_pagetable.mappages(
             .{ .addr = TRAMPOLINE - (i * 2 * PGSIZE) },
             PGSIZE,
-            PhyAddr.create(),
+            PhyAddr.create() catch unreachable,
             .{ .readable = true, .writable = true },
         );
     }

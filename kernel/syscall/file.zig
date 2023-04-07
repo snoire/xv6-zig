@@ -3,7 +3,6 @@ const c = @import("../c.zig");
 const xv6 = @import("../xv6.zig");
 const syscall = @import("../syscall.zig");
 const proc = @import("../proc.zig");
-const kalloc = @import("../kalloc.zig");
 const execv = @import("exec.zig").exec;
 const Proc = proc.Proc;
 
@@ -306,6 +305,11 @@ pub fn chdir() callconv(.C) isize {
 }
 
 pub fn exec() callconv(.C) isize {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+
+    const allocator = arena.allocator();
+
     var path_buf: [xv6.MAXPATH]u8 = undefined;
     var path = syscall.argstr(0, &path_buf);
 
@@ -317,21 +321,13 @@ pub fn exec() callconv(.C) isize {
         var uarg = syscall.fetchAddr(uargv + i * @sizeOf(usize));
         if (uarg == 0) break;
 
-        argv[i] = @constCast(syscall.fetchStr(uarg, kalloc.kalloc()));
+        argv[i] = @constCast(syscall.fetchStr(
+            uarg,
+            allocator.create([128]u8) catch unreachable,
+        ));
     }
 
-    var ret: c_int = execv(path, &argv);
-
-    for (&argv) |*addr| {
-        if (addr.* != null) {
-            kalloc.kfree(@ptrCast(
-                *align(kalloc.PGSIZE) [4096]u8,
-                @alignCast(kalloc.PGSIZE, addr.*.?),
-            ));
-        }
-    }
-
-    return ret;
+    return execv(path, &argv) catch |err| @panic(@errorName(err));
 }
 
 pub fn pipe() callconv(.C) isize {

@@ -8,6 +8,7 @@ const PageTable = vm.PageTable;
 const Address = vm.Address;
 const kalloc = xv6.kalloc;
 const print = xv6.print;
+const allocator = std.heap.page_allocator;
 
 const TRAMPOLINE = vm.TRAMPOLINE;
 const TRAPFRAME = vm.TRAPFRAME;
@@ -113,7 +114,7 @@ pub const Proc = extern struct {
     /// If found, initialize state required to run in the kernel,
     /// and return with p->lock held.
     /// If there are no free procs, or a memory allocation fails, return 0.
-    fn allocproc() ?*Proc {
+    fn allocproc() !*Proc {
         var p: *Proc = for (&proc) |*p| {
             p.lock.acquire();
 
@@ -123,17 +124,17 @@ pub const Proc = extern struct {
                 p.lock.release();
             }
         } else {
-            return null;
+            return error.NotFound;
         };
 
         p.pid = allocpid();
         p.state = .used;
 
         // Allocate a trapframe page.
-        p.trapframe = @ptrCast(*c.TrapFrame, kalloc.kalloc());
+        p.trapframe = @alignCast(PGSIZE, try allocator.create(c.TrapFrame));
 
         // An empty user page table.
-        p.pagetable = createPagetable(p);
+        p.pagetable = try createPagetable(p);
 
         // Set up new context to start executing at forkret,
         // which returns to user space.
@@ -146,9 +147,9 @@ pub const Proc = extern struct {
 
     /// Create a user page table for a given process, with no user memory,
     /// but with trampoline and trapframe pages.
-    pub fn createPagetable(p: *Proc) PageTable {
+    pub fn createPagetable(p: *Proc) !PageTable {
         // An empty page table.
-        var pagetable = PageTable.create();
+        var pagetable = try PageTable.create();
 
         // map the trampoline code (for system call return)
         // at the highest user virtual address.
@@ -174,7 +175,7 @@ pub const Proc = extern struct {
     /// p->lock must be held.
     fn freeproc(p: *Proc) void {
         if (p.trapframe != null) {
-            kalloc.kfree(@ptrCast(*align(PGSIZE) kalloc.Page, p.trapframe.?));
+            allocator.destroy(p.trapframe.?);
             p.trapframe = null;
         }
 
@@ -257,7 +258,7 @@ const initcode = [_]u8{
 // zig fmt: on
 
 pub fn userinit() void {
-    var p = Proc.allocproc().?;
+    var p = Proc.allocproc() catch unreachable;
     initproc = p;
 
     // allocate one user page and copy initcode's instructions
@@ -283,7 +284,7 @@ pub fn growproc(n: i32) c_int {
     var sz = p.sz;
 
     if (n > 0) {
-        sz = p.pagetable.uvmalloc(sz, sz + @intCast(usize, n), .{
+        sz = p.pagetable.alloc(sz, sz + @intCast(usize, n), .{
             .writable = true,
         });
         if (sz < 0) @panic("growproc");
@@ -297,13 +298,13 @@ pub fn growproc(n: i32) c_int {
 
 // Create a new process, copying the parent.
 // Sets up child kernel stack to return as if from fork() system call.
-pub fn fork() u32 {
+pub fn fork() !u32 {
     // Allocate process.
     var p = Proc.myproc().?;
-    var np = Proc.allocproc().?;
+    var np = try Proc.allocproc();
 
     // Copy user memory from parent to child.
-    p.pagetable.copy(np.pagetable, p.sz);
+    try p.pagetable.copy(np.pagetable, p.sz);
 
     np.sz = p.sz;
 
