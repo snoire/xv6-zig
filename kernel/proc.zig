@@ -13,6 +13,7 @@ const allocator = std.heap.page_allocator;
 const TRAMPOLINE = vm.TRAMPOLINE;
 const TRAPFRAME = vm.TRAPFRAME;
 const PGSIZE = vm.PGSIZE;
+const KSTACK_NUM = 4;
 
 /// trampoline.S
 extern const trampoline: u1;
@@ -51,7 +52,7 @@ pub fn init() void {
     for (&proc, 1..) |*p, i| {
         p.lock.init("proc");
         p.state = .unused;
-        p.kstack = TRAMPOLINE - (i * 2 * PGSIZE);
+        p.kstack = TRAMPOLINE - (i * (KSTACK_NUM + 1) * PGSIZE);
     }
 }
 
@@ -140,7 +141,7 @@ pub const Proc = extern struct {
         // which returns to user space.
         std.mem.set(u8, std.mem.asBytes(&p.context), 0);
         p.context.ra = @ptrToInt(&forkret);
-        p.context.sp = p.kstack + PGSIZE;
+        p.context.sp = p.kstack + KSTACK_NUM * PGSIZE;
 
         return p;
     }

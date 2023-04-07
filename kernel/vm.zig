@@ -14,6 +14,7 @@ pub const TRAPFRAME = TRAMPOLINE - PGSIZE;
 pub const TOTAL_BYTES = 128 * 1024 * 1024;
 pub const KERNBASE = 0x80000000;
 pub const PHYSTOP = KERNBASE + TOTAL_BYTES;
+const KSTACK_NUM = 4;
 
 /// kernel.ld sets this to end of kernel code.
 extern const etext: u1;
@@ -488,10 +489,14 @@ pub fn init() void {
     // Map it high in memory, followed by an invalid
     // guard page.
     for (1..xv6.NPROC) |i| {
+        const pages = allocator.create([KSTACK_NUM * PGSIZE]u8) catch unreachable;
+        std.mem.set(u8, pages, 0);
+        const phy_addr = PhyAddr{ .addr = @ptrToInt(pages) };
+
         kernel_pagetable.mappages(
-            .{ .addr = TRAMPOLINE - (i * 2 * PGSIZE) },
-            PGSIZE,
-            PhyAddr.create() catch unreachable,
+            .{ .addr = TRAMPOLINE - (i * (KSTACK_NUM + 1) * PGSIZE) },
+            KSTACK_NUM * PGSIZE,
+            phy_addr,
             .{ .readable = true, .writable = true },
         );
     }
