@@ -29,6 +29,7 @@ trapinithart(void)
   w_stvec((uint64)kernelvec);
 }
 
+#if 0
 //
 // handle an interrupt, exception, or system call from user space.
 // called from trampoline.S
@@ -82,7 +83,10 @@ usertrap(void)
 
   usertrapret();
 }
+#endif
 
+
+#if 0
 //
 // return to user space
 //
@@ -128,6 +132,7 @@ usertrapret(void)
   uint64 trampoline_userret = TRAMPOLINE + (userret - trampoline);
   ((void (*)(uint64))trampoline_userret)(satp);
 }
+#endif
 
 // interrupts and exceptions from kernel code go here via kernelvec,
 // on whatever the current kernel stack is.

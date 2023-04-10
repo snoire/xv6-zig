@@ -12,8 +12,8 @@ const allocator = std.heap.page_allocator;
 
 const TRAMPOLINE = vm.TRAMPOLINE;
 const TRAPFRAME = vm.TRAPFRAME;
-const PGSIZE = vm.PGSIZE;
-const KSTACK_NUM = 4;
+pub const PGSIZE = vm.PGSIZE;
+pub const KSTACK_NUM = 4;
 
 /// trampoline.S
 extern const trampoline: u1;
@@ -205,7 +205,7 @@ pub const Proc = extern struct {
         }
     }
 
-    fn setKilled(p: *Proc) void {
+    pub fn setKilled(p: *Proc) void {
         p.lock.acquire();
         defer p.lock.release();
 

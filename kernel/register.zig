@@ -72,6 +72,10 @@ pub const csr = struct {
         sstatus,
         satp,
         sie,
+        scause,
+        stvec,
+        stval,
+        sepc,
 
         pmpaddr0,
         pmpcfg0,
@@ -199,6 +203,50 @@ pub const csr = struct {
             sv39 = 8,
             sv48 = 9,
         } = .none,
+    };
+
+    /// Supervisor cause register
+    pub const scause = packed struct {
+        const tag = .scause;
+        pub usingnamespace Methods(@This());
+
+        code: OneLessBitThanUsize = 0,
+        interrupt: bool = false,
+
+        const OneLessBitThanUsize = @Type(.{
+            .Int = .{
+                .bits = @typeInfo(usize).Int.bits - 1,
+                .signedness = .unsigned,
+            },
+        });
+
+        pub const Interrupt = enum(OneLessBitThanUsize) {
+            @"Supervisor software interrupt" = 1,
+            @"Supervisor timer interrupt" = 5,
+            @"Supervisor external interrupt" = 9,
+
+            _,
+        };
+
+        pub const Exception = enum(OneLessBitThanUsize) {
+            @"Instruction address misaligned" = 0,
+            @"Instruction address fault" = 1,
+            @"Illegal instruction" = 2,
+            Breakpoint = 3,
+            @"Load address misaligned" = 4,
+            @"Load access fault" = 5,
+            @"Store/AMO address misaligned" = 6,
+            @"Store/AMO access fault" = 7,
+            @"Environment call from U-mode" = 8,
+            @"Environment call from S-mode" = 9,
+
+            @"Instruction page fault" = 12,
+            @"Load page fault" = 13,
+
+            @"Store/AMO page fault" = 15,
+
+            _,
+        };
     };
 
     pub inline fn read(comptime register: Register) usize {

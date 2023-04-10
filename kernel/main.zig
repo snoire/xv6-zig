@@ -27,7 +27,7 @@ pub fn main() callconv(.C) void {
         kernel.vm.inithart(); // turn on paging
         kernel.proc.init(); // process table
         c.trapinit(); // trap vectors
-        c.trapinithart(); // install kernel trap vector
+        kernel.trap.inithart();
         kernel.plic.init(); // set up interrupt controller
         kernel.plic.inithart(); // ask PLIC for device interrupts
         c.binit(); // buffer cache

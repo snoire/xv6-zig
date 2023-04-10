@@ -88,7 +88,7 @@ pub fn popOff() void {
 }
 
 /// disable device interrupts
-fn intrOff() void {
+pub fn intrOff() void {
     csr.sstatus.reset(.{ .sie = true });
 }
 
