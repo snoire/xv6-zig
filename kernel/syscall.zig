@@ -1,45 +1,6 @@
 const std = @import("std");
-const c = @import("c.zig");
-const kernel = @import("xv6.zig");
-const proc = @import("proc.zig");
-const vm = @import("vm.zig");
-const print = kernel.print;
-const Proc = proc.Proc;
-const PageTable = vm.PageTable;
-
-/// Fetch the uint64 at addr from the current process.
-export fn fetchaddr(addr: usize, ip: *usize) c_int {
-    var p: *Proc = Proc.myproc().?;
-    if (addr >= p.sz or addr + @sizeOf(usize) > p.sz) {
-        return -1;
-    }
-
-    return p.pagetable.copyin(@ptrCast([*]u8, ip), .{ .addr = addr }, @sizeOf(@TypeOf(ip.*)));
-}
-
-pub fn fetchAddr(addr: usize) usize {
-    var p: *Proc = Proc.myproc().?;
-    if (addr >= p.sz or addr + @sizeOf(usize) > p.sz) {
-        @panic("fetchAddr");
-    }
-
-    var ip: usize = undefined;
-    _ = p.pagetable.copyin(@ptrCast([*]u8, &ip), .{ .addr = addr }, @sizeOf(usize));
-    return ip;
-}
-
-/// Fetch the nul-terminated string at addr from the current process.
-/// Returns length of string, not including nul, or -1 for error.
-export fn fetchstr(addr: usize, buf: [*:0]u8, max: usize) c_int {
-    var p: *Proc = Proc.myproc().?;
-    var str = p.pagetable.copyinstr(buf[0..max], .{ .addr = addr }) catch return -1;
-    return @intCast(c_int, str.len);
-}
-
-pub fn fetchStr(addr: usize, buf: []u8) [:0]const u8 {
-    var p: *Proc = Proc.myproc().?;
-    return p.pagetable.copyinstr(buf, .{ .addr = addr }) catch unreachable;
-}
+const print = @import("xv6.zig").print;
+const Proc = @import("proc.zig").Proc;
 
 pub fn arg(n: u8) usize {
     var p: *Proc = Proc.myproc().?;
@@ -65,14 +26,6 @@ pub fn argint(n: u8) u32 {
 /// copyin/copyout will do that.
 pub fn argaddr(n: u8) usize {
     return arg(n);
-}
-
-/// Fetch the nth word-sized system call argument as a null-terminated string.
-/// Copies into buf, at most max.
-/// Returns string length if OK (including nul), panic if error.
-pub fn argstr(n: u8, buf: []u8) [:0]const u8 {
-    var addr = argaddr(n);
-    return fetchStr(addr, buf);
 }
 
 pub const SYS = enum(u8) {

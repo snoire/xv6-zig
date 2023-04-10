@@ -6,6 +6,33 @@ const proc = @import("../proc.zig");
 const execv = @import("exec.zig").exec;
 const Proc = proc.Proc;
 
+/// Fetch the uint64 at addr from the current process.
+fn fetchAddr(addr: usize) usize {
+    var p: *Proc = Proc.myproc().?;
+    if (addr >= p.sz or addr + @sizeOf(usize) > p.sz) {
+        @panic("fetchAddr");
+    }
+
+    var ip: usize = undefined;
+    _ = p.pagetable.copyin(@ptrCast([*]u8, &ip), .{ .addr = addr }, @sizeOf(usize));
+    return ip;
+}
+
+/// Fetch the nul-terminated string at addr from the current process.
+/// Returns length of string, not including nul, or -1 for error.
+fn fetchStr(addr: usize, buf: []u8) [:0]const u8 {
+    var p: *Proc = Proc.myproc().?;
+    return p.pagetable.copyinstr(buf, .{ .addr = addr }) catch unreachable;
+}
+
+/// Fetch the nth word-sized system call argument as a null-terminated string.
+/// Copies into buf, at most max.
+/// Returns string length if OK (including nul), panic if error.
+fn argstr(n: u8, buf: []u8) [:0]const u8 {
+    var addr = syscall.argaddr(n);
+    return fetchStr(addr, buf);
+}
+
 /// Fetch the nth word-sized system call argument as a file descriptor
 /// and return the corresponding struct file.
 fn argfile(n: u8) *c.File {
@@ -71,8 +98,8 @@ pub fn link() callconv(.C) isize {
     var old_buf: [xv6.MAXPATH]u8 = undefined;
     var new_buf: [xv6.MAXPATH]u8 = undefined;
 
-    var old = syscall.argstr(0, &old_buf);
-    var new = syscall.argstr(1, &new_buf);
+    var old = argstr(0, &old_buf);
+    var new = argstr(1, &new_buf);
 
     c.begin_op();
     defer c.end_op();
@@ -114,7 +141,7 @@ fn isdirempty(dp: *c.Inode) bool {
 
 pub fn unlink() callconv(.C) isize {
     var path_buf: [xv6.MAXPATH]u8 = undefined;
-    var path = syscall.argstr(0, &path_buf);
+    var path = argstr(0, &path_buf);
 
     c.begin_op();
     defer c.end_op();
@@ -209,7 +236,7 @@ const O = struct {
 
 pub fn open() callconv(.C) isize {
     var path_buf: [xv6.MAXPATH]u8 = undefined;
-    var path = syscall.argstr(0, &path_buf);
+    var path = argstr(0, &path_buf);
 
     var omode = syscall.argint(1);
 
@@ -262,7 +289,7 @@ pub fn mkdir() callconv(.C) isize {
     defer c.end_op();
 
     var path_buf: [xv6.MAXPATH]u8 = undefined;
-    var path = syscall.argstr(0, &path_buf);
+    var path = argstr(0, &path_buf);
 
     var ip = create(path, .dir, 0, 0).?;
     ip.unlockput();
@@ -274,7 +301,7 @@ pub fn mknod() callconv(.C) isize {
     defer c.end_op();
 
     var path_buf: [xv6.MAXPATH]u8 = undefined;
-    var path = syscall.argstr(0, &path_buf);
+    var path = argstr(0, &path_buf);
 
     var major = @intCast(c_short, syscall.argint(1));
     var minor = @intCast(c_short, syscall.argint(2));
@@ -290,7 +317,7 @@ pub fn chdir() callconv(.C) isize {
     c.begin_op();
 
     var path_buf: [xv6.MAXPATH]u8 = undefined;
-    var path = syscall.argstr(0, &path_buf);
+    var path = argstr(0, &path_buf);
 
     var ip = c.namei(path).?;
     ip.ilock();
@@ -311,17 +338,17 @@ pub fn exec() callconv(.C) isize {
     const allocator = arena.allocator();
 
     var path_buf: [xv6.MAXPATH]u8 = undefined;
-    var path = syscall.argstr(0, &path_buf);
+    var path = argstr(0, &path_buf);
 
     var uargv = syscall.argaddr(1);
 
     var argv: [xv6.MAXARG - 1:null]?[*:0]u8 = .{null} ** xv6.MAXARG;
 
     for (0..xv6.MAXARG) |i| {
-        var uarg = syscall.fetchAddr(uargv + i * @sizeOf(usize));
+        var uarg = fetchAddr(uargv + i * @sizeOf(usize));
         if (uarg == 0) break;
 
-        argv[i] = @constCast(syscall.fetchStr(
+        argv[i] = @constCast(fetchStr(
             uarg,
             allocator.create([128]u8) catch unreachable,
         ));
