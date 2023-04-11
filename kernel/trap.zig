@@ -5,8 +5,10 @@ const gpr = xv6.register.gpr;
 const print = xv6.print;
 const proc = @import("proc.zig");
 const Proc = proc.Proc;
-const intrOn = @import("SpinLock.zig").intrOn;
-const intrOff = @import("SpinLock.zig").intrOff;
+const SpinLock = @import("SpinLock.zig");
+const intrOn = SpinLock.intrOn;
+const intrOff = SpinLock.intrOff;
+const intrGet = SpinLock.intrGet;
 const vm = @import("vm.zig");
 
 const TRAMPOLINE = vm.TRAMPOLINE;
@@ -37,7 +39,7 @@ export fn usertrap() void {
     // since we're now in the kernel.
     csr.write(.stvec, @ptrToInt(&kernelvec));
 
-    var p: *Proc = Proc.myproc().?;
+    var p = Proc.myproc().?;
 
     // save user program counter.
     p.trapframe.?.epc = csr.read(.sepc);
@@ -161,4 +163,38 @@ export fn usertrapret() void {
     const trampoline_userret = TRAMPOLINE + (userret_addr - trampoline_addr);
     const userret_fn = @intToPtr(*const fn (csr.satp) void, trampoline_userret);
     userret_fn(satp);
+}
+
+/// interrupts and exceptions from kernel code go here via kernelvec,
+/// on whatever the current kernel stack is.
+export fn kerneltrap() void {
+    const sepc = csr.read(.sepc);
+    const sstatus = csr.sstatus.read();
+
+    if (!sstatus.spp) {
+        @panic("kerneltrap: not from supervisor mode");
+    }
+
+    if (intrGet()) {
+        @panic("kerneltrap: interrupts enabled");
+    }
+
+    var which_dev = devintr();
+    if (which_dev == 0) {
+        print("scause {}\n", .{csr.read(.scause)});
+        print("sepc={} stval={}\n", .{ sepc, csr.read(.stval) });
+        @panic("kerneltrap");
+    }
+
+    // give up the CPU if this is a timer interrupt.
+    if (Proc.myproc()) |p| {
+        if (p.state == .running and which_dev == 2) {
+            yield();
+        }
+    }
+
+    // the yield() may have caused some traps to occur,
+    // so restore trap registers for use by kernelvec.S's sepc instruction.
+    csr.write(.sepc, sepc);
+    csr.write(.sstatus, @bitCast(usize, sstatus));
 }

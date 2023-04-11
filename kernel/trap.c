@@ -134,6 +134,7 @@ usertrapret(void)
 }
 #endif
 
+#if 0
 // interrupts and exceptions from kernel code go here via kernelvec,
 // on whatever the current kernel stack is.
 void 
@@ -164,6 +165,7 @@ kerneltrap()
   w_sepc(sepc);
   w_sstatus(sstatus);
 }
+#endif
 
 void
 clockintr()
