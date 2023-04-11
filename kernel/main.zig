@@ -26,8 +26,8 @@ pub fn main() callconv(.C) void {
         kernel.vm.init(); // create kernel page table
         kernel.vm.inithart(); // turn on paging
         kernel.proc.init(); // process table
-        c.trapinit(); // trap vectors
-        kernel.trap.inithart();
+        kernel.trap.init(); // trap vectors
+        kernel.trap.inithart(); // install kernel trap vector
         kernel.plic.init(); // set up interrupt controller
         kernel.plic.inithart(); // ask PLIC for device interrupts
         c.binit(); // buffer cache
@@ -42,7 +42,7 @@ pub fn main() callconv(.C) void {
 
         print("hart {} starting\n", .{id});
         kernel.vm.inithart(); // turn on paging
-        c.trapinithart(); // install kernel trap vector
+        kernel.trap.inithart(); // install kernel trap vector
         kernel.plic.inithart(); // ask PLIC for device interrupts
     }
 

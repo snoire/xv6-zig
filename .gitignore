@@ -31,3 +31,5 @@ kernel/sysproc.c
 kernel/sysfile.c
 kernel/syscall.c
 kernel/exec.c
+kernel/trap.c
+kernel/plic.c

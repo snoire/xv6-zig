@@ -46,7 +46,7 @@ const kfiles = .{
     "trampoline.S",
     "kernelvec.S",
 
-    "trap.c",
+    // "trap.c",
     // "kalloc.c",
     // "vm.c",
     // "proc.c",
@@ -60,7 +60,7 @@ const kfiles = .{
     "log.c",
     "file.c",
     "pipe.c",
-    "plic.c",
+    // "plic.c",
     "virtio_disk.c",
 
     "string.c",

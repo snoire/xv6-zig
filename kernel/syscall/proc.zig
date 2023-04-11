@@ -2,6 +2,7 @@ const c = @import("../c.zig");
 const syscall = @import("../syscall.zig");
 const proc = @import("../proc.zig");
 const Proc = proc.Proc;
+const trap = @import("../trap.zig");
 
 pub fn exit() callconv(.C) isize {
     proc.exit(@intCast(i32, syscall.arg(0)));
@@ -28,20 +29,16 @@ pub fn sbrk() callconv(.C) isize {
     return @intCast(isize, addr);
 }
 
-// trap.c
-extern var ticks: u32;
-extern var tickslock: c.SpinLock;
-
 pub fn sleep() callconv(.C) isize {
     var n = syscall.argint(0);
-    tickslock.acquire();
-    defer tickslock.release();
+    trap.tickslock.acquire();
+    defer trap.tickslock.release();
 
-    var ticks0 = ticks;
+    var ticks0 = trap.ticks;
 
-    while (ticks - ticks0 < n) {
+    while (trap.ticks - ticks0 < n) {
         if (Proc.myproc().?.isKilled()) return -1;
-        proc.sleep(&ticks, &tickslock);
+        proc.sleep(&trap.ticks, &trap.tickslock);
     }
     return 0;
 }
@@ -52,9 +49,9 @@ pub fn kill() callconv(.C) isize {
 }
 
 pub fn uptime() callconv(.C) isize {
-    tickslock.acquire();
-    defer tickslock.release();
+    trap.tickslock.acquire();
+    defer trap.tickslock.release();
 
-    var xticks = ticks;
+    var xticks = trap.ticks;
     return xticks;
 }

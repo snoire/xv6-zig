@@ -10,6 +10,7 @@ const intrOn = SpinLock.intrOn;
 const intrOff = SpinLock.intrOff;
 const intrGet = SpinLock.intrGet;
 const vm = @import("vm.zig");
+const c = @import("c.zig");
 const plic = @import("plic.zig");
 
 const TRAMPOLINE = vm.TRAMPOLINE;
@@ -22,12 +23,17 @@ extern fn yield() void;
 extern fn syscall() void; // TODO
 extern fn exit(i32) void; // TODO
 
+pub export var ticks: u32 = 0;
+pub export var tickslock: c.SpinLock = undefined;
+
+pub fn init() void {
+    tickslock.init("time");
+}
+
 /// set up to take exceptions and traps while in the kernel.
 pub fn inithart() void {
     csr.write(.stvec, @ptrToInt(&kernelvec));
 }
-
-// extern fn devintr() u32;
 
 /// handle an interrupt, exception, or system call from user space.
 /// called from trampoline.S
@@ -44,36 +50,6 @@ export fn usertrap() void {
 
     // save user program counter.
     p.trapframe.?.epc = csr.read(.sepc);
-
-    // const scause = csr.scause.read();
-
-    // if (!scause.interrupt) {
-    //     const exception_code = @intToEnum(csr.scause.Exception, scause.code);
-    //     switch (exception_code) {
-    //         .@"Environment call from U-mode" => {
-    //             if (p.isKilled()) exit(-1);
-
-    //             // sepc points to the ecall instruction,
-    //             // but we want to return to the next instruction.
-    //             p.trapframe.?.epc += 4;
-
-    //             // an interrupt will change sepc, scause, and sstatus,
-    //             // so enable only now that we're done with those registers.
-    //             intrOn();
-
-    //             syscall();
-    //         },
-    //         else => {
-    //             print(
-    //                 \\usertrap(): unexpected exception {s} pid={}
-    //                 \\            sepc={} stval={}
-    //                 \\
-    //             , .{ @tagName(exception_code), p.pid, csr.read(.sepc), csr.read(.stval) });
-
-    //             p.setKilled();
-    //         },
-    //     }
-    // }
 
     var which_dev: u32 = undefined;
     if (csr.read(.scause) == 8) {
@@ -92,31 +68,28 @@ export fn usertrap() void {
         which_dev = devintr();
 
         if (which_dev == 0) {
-            print("unexpected scause\n", .{});
+            print(
+                \\usertrap(): unexpected scause {} pid={}
+                \\            sepc={} stval={}
+                \\
+            , .{ csr.read(.scause), p.pid, csr.read(.sepc), csr.read(.stval) });
+
             p.setKilled();
         }
     }
 
     if (p.isKilled()) exit(-1);
 
-    // // give up the CPU if this is a timer interrupt.
-    // if (scause.interrupt) {
-    //     const interrupt_code = @intToEnum(csr.scause.Interrupt, scause.code);
-    //     if (interrupt_code == .@"Supervisor software interrupt") {
-    //         yield();
-    //     }
-    // }
+    // give up the CPU if this is a timer interrupt.
     if (which_dev == 2) yield();
 
     usertrapret();
 }
 
-/// trampoline.S
+// trampoline.S
 extern const trampoline: u1;
 extern const uservec: u1;
 extern const userret: u1;
-
-// extern fn usertrap() void;
 
 /// return to user space
 export fn usertrapret() void {
@@ -201,9 +174,6 @@ export fn kerneltrap() void {
 }
 
 extern fn cpuid() usize;
-extern fn virtio_disk_intr() void;
-extern fn uartintr() void;
-extern fn clockintr() void;
 
 /// check if it's an external interrupt or software interrupt,
 /// and handle it.
@@ -228,8 +198,8 @@ fn devintr() u32 {
                 const irq = target.claim() orelse @panic("irq is 0");
 
                 switch (irq) {
-                    .virtio0 => virtio_disk_intr(),
-                    .uart0 => uartintr(),
+                    .virtio0 => c.virtio_disk_intr(),
+                    .uart0 => c.uartintr(),
                     else => print("unexpected interrupt irq={}\n", .{@enumToInt(irq)}),
                 }
 
@@ -259,4 +229,12 @@ fn devintr() u32 {
     }
 
     return 0;
+}
+
+fn clockintr() void {
+    tickslock.acquire();
+    defer tickslock.release();
+
+    ticks +%= 1; // wrapping addition
+    proc.wakeup(&ticks);
 }

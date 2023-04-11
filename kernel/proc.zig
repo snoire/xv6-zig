@@ -541,7 +541,7 @@ pub export fn sleep(chan: *anyopaque, lk: *c.SpinLock) void {
 
 /// Wake up all processes sleeping on chan.
 /// Must be called without any p->lock.
-export fn wakeup(chan: *anyopaque) void {
+pub export fn wakeup(chan: *anyopaque) void {
     for (&proc) |*p| {
         if (p == Proc.myproc()) continue;
 

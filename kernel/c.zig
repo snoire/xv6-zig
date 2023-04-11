@@ -309,3 +309,9 @@ pub const TrapFrame = extern struct {
 
 // trap.c
 pub extern fn usertrapret() void;
+
+// virtio_disk.c
+pub extern fn virtio_disk_intr() void;
+
+// uart.c
+pub extern fn uartintr() void;

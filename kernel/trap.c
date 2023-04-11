@@ -29,7 +29,6 @@ trapinithart(void)
   w_stvec((uint64)kernelvec);
 }
 
-#if 0
 //
 // handle an interrupt, exception, or system call from user space.
 // called from trampoline.S
@@ -83,10 +82,7 @@ usertrap(void)
 
   usertrapret();
 }
-#endif
 
-
-#if 0
 //
 // return to user space
 //
@@ -107,7 +103,7 @@ usertrapret(void)
   // set up trapframe values that uservec will need when
   // the process next traps into the kernel.
   p->trapframe->kernel_satp = r_satp();         // kernel page table
-  p->trapframe->kernel_sp = p->kstack + 4 * PGSIZE; // process's kernel stack
+  p->trapframe->kernel_sp = p->kstack + PGSIZE; // process's kernel stack
   p->trapframe->kernel_trap = (uint64)usertrap;
   p->trapframe->kernel_hartid = r_tp();         // hartid for cpuid()
 
@@ -132,9 +128,7 @@ usertrapret(void)
   uint64 trampoline_userret = TRAMPOLINE + (userret - trampoline);
   ((void (*)(uint64))trampoline_userret)(satp);
 }
-#endif
 
-#if 0
 // interrupts and exceptions from kernel code go here via kernelvec,
 // on whatever the current kernel stack is.
 void 
@@ -165,7 +159,6 @@ kerneltrap()
   w_sepc(sepc);
   w_sstatus(sstatus);
 }
-#endif
 
 void
 clockintr()
@@ -176,7 +169,6 @@ clockintr()
   release(&tickslock);
 }
 
-#if 0
 // check if it's an external interrupt or software interrupt,
 // and handle it.
 // returns 2 if timer interrupt,
@@ -227,4 +219,3 @@ devintr()
   }
 }
 
-#endif
