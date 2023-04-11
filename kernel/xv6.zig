@@ -8,6 +8,7 @@ pub const print = @import("print.zig").printFn;
 pub const kalloc = @import("kalloc.zig");
 pub const vm = @import("vm.zig");
 pub const proc = @import("proc.zig");
+pub const plic = @import("plic.zig");
 
 /// maximum number of processes
 pub const NPROC = 64;
