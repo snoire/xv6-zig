@@ -21,10 +21,11 @@ extern fn cpuid() usize;
 const IRQ = enum(u6) {
     virtio0 = 1,
     uart0 = 10,
+    _,
 };
 
 /// interrupt target
-const Target = struct {
+pub const Target = struct {
     mode: Mode,
     hart: u3,
 

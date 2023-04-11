@@ -10,6 +10,7 @@ const intrOn = SpinLock.intrOn;
 const intrOff = SpinLock.intrOff;
 const intrGet = SpinLock.intrGet;
 const vm = @import("vm.zig");
+const plic = @import("plic.zig");
 
 const TRAMPOLINE = vm.TRAMPOLINE;
 const PGSIZE = proc.PGSIZE;
@@ -26,7 +27,7 @@ pub fn inithart() void {
     csr.write(.stvec, @ptrToInt(&kernelvec));
 }
 
-extern fn devintr() u32;
+// extern fn devintr() u32;
 
 /// handle an interrupt, exception, or system call from user space.
 /// called from trampoline.S
@@ -197,4 +198,65 @@ export fn kerneltrap() void {
     // so restore trap registers for use by kernelvec.S's sepc instruction.
     csr.write(.sepc, sepc);
     csr.write(.sstatus, @bitCast(usize, sstatus));
+}
+
+extern fn cpuid() usize;
+extern fn virtio_disk_intr() void;
+extern fn uartintr() void;
+extern fn clockintr() void;
+
+/// check if it's an external interrupt or software interrupt,
+/// and handle it.
+/// returns 2 if timer interrupt,
+/// 1 if other device,
+/// 0 if not recognized.
+fn devintr() u32 {
+    const scause = csr.scause.read();
+
+    if (scause.interrupt) {
+        const interrupt_code = @intToEnum(csr.scause.Interrupt, scause.code);
+        switch (interrupt_code) {
+            .@"Supervisor external interrupt" => {
+                // this is a supervisor external interrupt, via PLIC.
+
+                const target = plic.Target{
+                    .mode = .supervisor,
+                    .hart = @intCast(u3, cpuid()),
+                };
+
+                // irq indicates which device interrupted.
+                const irq = target.claim() orelse @panic("irq is 0");
+
+                switch (irq) {
+                    .virtio0 => virtio_disk_intr(),
+                    .uart0 => uartintr(),
+                    else => print("unexpected interrupt irq={}\n", .{@enumToInt(irq)}),
+                }
+
+                // the PLIC allows each device to raise at most one
+                // interrupt at a time; tell the PLIC the device is
+                // now allowed to interrupt again.
+                target.complete(irq);
+
+                return 1;
+            },
+            .@"Supervisor software interrupt" => {
+                // software interrupt from a machine-mode timer interrupt,
+                // forwarded by timervec in kernelvec.S.
+
+                if (cpuid() == 0) {
+                    clockintr();
+                }
+
+                // acknowledge the software interrupt by clearing
+                // the SSIP bit in sip.
+                csr.sip.reset(.{ .ssip = true });
+
+                return 2;
+            },
+            else => {},
+        }
+    }
+
+    return 0;
 }

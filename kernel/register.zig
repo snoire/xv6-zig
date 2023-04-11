@@ -72,6 +72,7 @@ pub const csr = struct {
         sstatus,
         satp,
         sie,
+        sip,
         scause,
         stvec,
         stval,
@@ -168,6 +169,25 @@ pub const csr = struct {
         meie: bool = false,
 
         _: u52 = 0,
+    };
+
+    /// Supervisor interrupt-pending register
+    pub const sip = packed struct {
+        const tag = .sip;
+        pub usingnamespace Methods(@This());
+
+        usip: bool = false,
+        ssip: bool = false,
+
+        @"2-3": u2 = 0,
+        utip: bool = false,
+        stip: bool = false,
+
+        @"6-7": u2 = 0,
+        ueip: bool = false,
+        seip: bool = false,
+
+        _: u54 = 0,
     };
 
     /// Supervisor Interrupt Enable
