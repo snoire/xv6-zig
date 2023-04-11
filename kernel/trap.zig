@@ -110,7 +110,7 @@ export fn usertrapret() void {
     // set up trapframe values that uservec will need when
     // the process next traps into the kernel.
     p.trapframe.?.kernel_satp = csr.read(.satp); // kernel page table
-    p.trapframe.?.kernel_sp = p.kstack + KSTACK_NUM * PGSIZE; // process's kernel stack
+    p.trapframe.?.kernel_sp = p.kstack; // process's kernel stack
     p.trapframe.?.kernel_trap = @ptrToInt(&usertrap);
     p.trapframe.?.kernel_hartid = gpr.read(.tp); // hartid for cpuid()
 
