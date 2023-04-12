@@ -404,13 +404,13 @@ pub fn wait(addr: usize) u32 {
             if (pp.state != .zombie) continue;
             // Found one.
             var pid = pp.pid;
-            var ret = p.pagetable.copyout(
+            if (addr != 0 and p.pagetable.copyout(
                 .{ .addr = addr },
                 @ptrCast([*]const u8, &pp.xstate),
                 @sizeOf(c_int),
-            );
-
-            if (addr > 0 and ret != 0) @panic("wait");
+            ) < 0) {
+                @panic("wait");
+            }
 
             pp.freeproc();
             return pid;

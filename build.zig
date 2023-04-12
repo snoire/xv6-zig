@@ -6,7 +6,6 @@ const target: std.zig.CrossTarget = .{
     .cpu_arch = .riscv64,
     .os_tag = .freestanding,
     .abi = .none,
-    .cpu_features_sub = std.Target.riscv.featureSet(&.{.c}),
 };
 
 var optimize: std.builtin.Mode = undefined;
