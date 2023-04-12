@@ -86,6 +86,20 @@ pub fn build(b: *std.Build) void {
         break :blk option;
     };
 
+    // initcode
+    const initcode_elf = b.addExecutable(.{
+        .name = "initcode",
+        .root_source_file = null,
+        .target = target,
+        .optimize = optimize,
+    });
+
+    initcode_elf.addAssemblyFile("user/initcode.S");
+    initcode_elf.addIncludePath("kernel/");
+    initcode_elf.setLinkerScriptPath(.{ .path = "user/initcode.ld" });
+
+    const initcode_bin = initcode_elf.addObjCopy(.{ .format = .bin });
+
     // build kernel
     const kernel = b.addExecutable(.{
         .name = "kernel",
@@ -105,6 +119,10 @@ pub fn build(b: *std.Build) void {
             kernel.addCSourceFile(path, &.{});
         }
     }
+
+    kernel.addAnonymousModule("initcode", .{
+        .source_file = initcode_bin.getOutputSource(),
+    });
 
     kernel.strip = strip;
     kernel.code_model = .medium;
