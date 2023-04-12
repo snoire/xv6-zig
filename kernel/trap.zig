@@ -195,7 +195,7 @@ fn devintr() u32 {
                 };
 
                 // irq indicates which device interrupted.
-                const irq = target.claim() orelse @panic("irq is 0");
+                const irq = target.claim() orelse return 1;
 
                 switch (irq) {
                     .virtio0 => c.virtio_disk_intr(),
