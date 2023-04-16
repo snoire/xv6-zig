@@ -170,7 +170,7 @@ pub fn build(b: *std.Build) void {
 
     // build fs.img
     // run mkfs to build the initial file system
-    const run_mkfs = mkfs.run();
+    const run_mkfs = b.addRunArtifact(mkfs);
     const fs_img = run_mkfs.addOutputFileArg("fs.img");
     run_mkfs.addArg("README.md");
 
