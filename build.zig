@@ -73,18 +73,9 @@ const kfiles = .{
 };
 
 pub fn build(b: *std.Build) void {
+    // compilation options
     optimize = b.standardOptimizeOption(.{});
     strip = b.option(bool, "strip", "Removes symbols and sections from file");
-    const cpus = blk: {
-        const description = b.fmt("Number of CPUS (1-{})", .{xv6.NCPU});
-        const option = b.option([]const u8, "CPUS", description) orelse "3";
-
-        const message = b.fmt("CPUS must be in the range of [1-{}].", .{xv6.NCPU});
-        const number = std.fmt.parseInt(u4, option, 0) catch @panic(message);
-        if (number > xv6.NCPU or number == 0) @panic(message);
-
-        break :blk option;
-    };
 
     // initcode
     const initcode_elf = b.addExecutable(.{
@@ -187,9 +178,23 @@ pub fn build(b: *std.Build) void {
     const fs_tls = b.step("fs", "Build fs.img");
     fs_tls.dependOn(&install_fs_img.step);
 
+    // runtime options
+    const cpus = blk: {
+        const description = b.fmt("Number of cpus (1-{})", .{xv6.NCPU});
+        const option = b.option([]const u8, "cpus", description) orelse "3";
+
+        const message = b.fmt("cpus must be in the range of [1-{}].", .{xv6.NCPU});
+        const number = std.fmt.parseInt(u4, option, 0) catch @panic(message);
+        if (number > xv6.NCPU or number == 0) @panic(message);
+
+        break :blk option;
+    };
+
+    const fs_img_path = b.option([]const u8, "fs-path", "Path to the fs.img") orelse
+        b.pathJoin(&.{ b.install_prefix, "fs.img" });
+
     // run xv6 in qemu
     const kernel_path = b.pathJoin(&.{ b.install_prefix, "kernel" });
-    const fs_img_path = b.pathJoin(&.{ b.install_prefix, "fs.img" });
     const qemu_cmd = "qemu-system-riscv64";
     const qemu_args = [_][]const u8{ // zig fmt: off
         "-machine",     "virt",

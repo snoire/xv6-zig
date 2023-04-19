@@ -10,13 +10,19 @@ To compile the project, you will need to download the latest master version of t
 
 You can use `zig build` to fully compiles the project with default settings or use `zig build run` to compiles and runs the project.
 
-When using zig build, there are several compilation options available:
+When using zig build, there are several options available:
+
+Compilation options:
 
 - `-Doptimize` - specifies the compilation mode
 - `-Dstrip` - specifies whether or not to strip the binary
-- `-DCPUS` - specifies the number of cores to simulate with qemu
 
-For example, `zig build -Doptimize=ReleaseFast -Dstrip run -DCPUS=1` enables fast optimization, strips the binary after compilation, and sets the simulated core count to one when running qemu.
+Runtime options:
+
+- `-Dcpus` - specifies the number of cores to simulate with qemu
+- `-Dfs-path` - specifies the path to the fs.img
+
+For example, `zig build -Doptimize=ReleaseFast -Dstrip run -Dcpus=1` enables fast optimization, strips the binary after compilation, and sets the simulated core count to one when running qemu.
 
 Other useful commands include:
 
