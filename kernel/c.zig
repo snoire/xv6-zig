@@ -190,21 +190,21 @@ pub const SuperBlock = extern struct {
     pub const FSMAGIC = 0x10203040;
 
     /// Must be FSMAGIC
-    magic: c_uint,
+    magic: u32,
     /// Size of file system image (blocks)
-    size: c_uint,
+    size: u32,
     /// Number of data blocks
-    nblocks: c_uint,
+    nblocks: u32,
     /// Number of inodes.
-    ninodes: c_uint,
+    ninodes: u32,
     /// Number of log blocks
-    nlog: c_uint,
+    nlog: u32,
     /// Block number of first log block
-    logstart: c_uint,
+    logstart: u32,
     /// Block number of first inode block
-    inodestart: c_uint,
+    inodestart: u32,
     /// Block number of first free map block
-    bmapstart: c_uint,
+    bmapstart: u32,
 };
 
 // 64 bytes

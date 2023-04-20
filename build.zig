@@ -56,7 +56,7 @@ const kfiles = .{
 
     // "bio.c",
     "fs.c",
-    "log.c",
+    // "log.c",
     "file.c",
     "pipe.c",
     // "plic.c",
