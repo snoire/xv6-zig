@@ -37,47 +37,43 @@ pub const Target = struct {
 
     /// Enable/disable certain interrupt sources
     pub fn enable(target: Target, irq: IRQ) void {
-        const id = @enumToInt(irq);
-        const enables = @intToPtr(
-            [*]volatile u32,
-            enable_base + (@as(usize, 2) * target.hart + @enumToInt(target.mode)) * enable_stride,
+        const id = @intFromEnum(irq);
+        const enables: [*]volatile u32 = @ptrFromInt(
+            enable_base + (@as(usize, 2) * target.hart + @intFromEnum(target.mode)) * enable_stride,
         );
 
         // require naturally aligned 32-bit memory accesses
         if (id < 32) {
-            enables[0] |= @as(u32, 1) << @intCast(u5, id);
+            enables[0] |= @as(u32, 1) << @intCast(id);
         } else {
-            enables[1] |= @as(u32, 1) << @intCast(u5, id - 32);
+            enables[1] |= @as(u32, 1) << @intCast(id - 32);
         }
     }
 
     /// Sets the threshold that interrupts must meet before being able to trigger.
     pub fn threshold(target: Target, thr: u3) void {
-        const ptr = @intToPtr(
-            *volatile u32,
-            threshold_base + (@as(usize, 2) * target.hart + @enumToInt(target.mode)) * context_stride,
+        const ptr: *volatile u32 = @ptrFromInt(
+            threshold_base + (@as(usize, 2) * target.hart + @intFromEnum(target.mode)) * context_stride,
         );
         ptr.* = thr;
     }
 
     /// Query the PLIC what interrupt we should serve.
     pub fn claim(target: Target) ?IRQ {
-        const ptr = @intToPtr(
-            *volatile u32,
-            @"claim/complete_base" + (@as(usize, 2) * target.hart + @enumToInt(target.mode)) * context_stride,
+        const ptr: *volatile u32 = @ptrFromInt(
+            @"claim/complete_base" + (@as(usize, 2) * target.hart + @intFromEnum(target.mode)) * context_stride,
         );
         const irq = ptr.*;
-        return if (irq != 0) @intToEnum(IRQ, irq) else null;
+        return if (irq != 0) @as(IRQ, @enumFromInt(irq)) else null;
     }
 
     /// Writing the interrupt ID it received from the claim (irq) to the
     /// complete register would signal the PLIC we've served this IRQ.
     pub fn complete(target: Target, irq: IRQ) void {
-        const ptr = @intToPtr(
-            *volatile u32,
-            @"claim/complete_base" + (@as(usize, 2) * target.hart + @enumToInt(target.mode)) * context_stride,
+        const ptr: *volatile u32 = @ptrFromInt(
+            @"claim/complete_base" + (@as(usize, 2) * target.hart + @intFromEnum(target.mode)) * context_stride,
         );
-        ptr.* = @enumToInt(irq);
+        ptr.* = @intFromEnum(irq);
     }
 };
 
@@ -88,7 +84,7 @@ pub fn init() void {
 }
 
 pub fn inithart() void {
-    const target = Target{ .mode = .supervisor, .hart = @intCast(u3, cpuid()) };
+    const target = Target{ .mode = .supervisor, .hart = @intCast(cpuid()) };
 
     // set enable bits for this hart's S-mode
     // for the uart and virtio disk.
@@ -101,6 +97,6 @@ pub fn inithart() void {
 
 /// Sets the priority of a particular interrupt source
 fn priority(irq: IRQ, pri: u3) void {
-    const ptr = @intToPtr([*]volatile u32, priority_base);
-    ptr[@enumToInt(irq)] = pri;
+    const ptr: [*]volatile u32 = @ptrFromInt(priority_base);
+    ptr[@intFromEnum(irq)] = pri;
 }

@@ -75,13 +75,13 @@ pub const clint = struct {
 
     /// trigger a machine-level software interrupt
     pub fn msip(hart: u3, val: u1) void {
-        const ptr = @intToPtr([*]volatile u32, base);
+        const ptr: [*]volatile u32 = @ptrFromInt(base);
         ptr[hart] = val;
     }
 
     /// The machine time counter. QEMU increments this at a frequency of 10Mhz.
     pub fn mtime() u64 {
-        return @intToPtr(*volatile u64, base + 0xbff8).*;
+        return @as(*volatile u64, @ptrFromInt(base + 0xbff8)).*;
     }
 
     /// The machine time compare register
@@ -90,7 +90,7 @@ pub const clint = struct {
 
         /// a timer interrupt is fired if mtimecmp >= mtime
         pub fn set(hart: u8, time: u64) void {
-            const ptr = @intToPtr([*]volatile u64, base + offset);
+            const ptr: [*]volatile u64 = @ptrFromInt(base + offset);
             ptr[hart] = time;
         }
 

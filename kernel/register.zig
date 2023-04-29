@@ -305,15 +305,15 @@ pub const csr = struct {
 
         return struct {
             pub fn read() T {
-                return @bitCast(T, csr.read(register));
+                return @bitCast(csr.read(register));
             }
 
             pub fn set(self: T) void {
-                csr.set(register, @bitCast(usize, self));
+                csr.set(register, @bitCast(self));
             }
 
             pub fn reset(self: T) void {
-                csr.clear(register, @bitCast(usize, self));
+                csr.clear(register, @bitCast(self));
             }
         };
     }

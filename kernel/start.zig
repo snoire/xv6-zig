@@ -25,8 +25,6 @@ export fn _entry() linksection(".kernel_entry") callconv(.Naked) noreturn {
         \\spin:
         \\      j spin
     );
-
-    unreachable;
 }
 
 export fn start() void {
@@ -35,7 +33,7 @@ export fn start() void {
 
     // set M Exception Program Counter to main, for mret.
     // requires code_model = .medium
-    csr.write(.mepc, @ptrToInt(&main));
+    csr.write(.mepc, @intFromPtr(&main));
 
     // disable paging for now.
     csr.satp.set(.{ .mode = .none });
@@ -62,7 +60,7 @@ export fn start() void {
 
 fn timerinit() void {
     // each CPU has a separate source of timer interrupts.
-    const id = @intCast(u8, csr.read(.mhartid));
+    const id: u8 = @intCast(csr.read(.mhartid));
 
     // ask the CLINT for a timer interrupt.
     const interval = 100_0000; // cycles; about 1/10th second in qemu.
@@ -75,10 +73,10 @@ fn timerinit() void {
     var scratch = &timer_scratch[id];
     scratch[3] = clint.mtimecmp.get(id);
     scratch[4] = interval;
-    csr.write(.mscratch, @ptrToInt(scratch));
+    csr.write(.mscratch, @intFromPtr(scratch));
 
     // set the machine-mode trap handler.
-    csr.write(.mtvec, @ptrToInt(&timervec));
+    csr.write(.mtvec, @intFromPtr(&timervec));
 
     // enable machine-mode interrupts.
     csr.mstatus.set(.{ .mie = true });

@@ -18,7 +18,7 @@ pub fn arg(n: u8) usize {
 
 /// Fetch the nth 32-bit system call argument.
 pub fn argint(n: u8) u32 {
-    return @intCast(u32, arg(n));
+    return @intCast(arg(n));
 }
 
 /// Retrieve an argument as a pointer.
@@ -78,7 +78,7 @@ export fn syscall() void {
     if (num > 0 and num < syscalls.len) {
         // Use num to lookup the system call function for num, call it,
         // and store its return value in p.trapframe.a0
-        p.trapframe.?.a0 = @bitCast(usize, syscalls[num]());
+        p.trapframe.?.a0 = @bitCast(syscalls[num]());
     } else {
         print("{} {s}: unknown sys call {}\n", .{ p.pid, &p.name, num });
         p.trapframe.?.a0 = std.math.maxInt(usize);

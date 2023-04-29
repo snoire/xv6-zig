@@ -83,7 +83,7 @@ pub const CAllocator = struct {
     }
 
     fn getHeader(ptr: [*]u8) *[*]u8 {
-        return @intToPtr(*[*]u8, @ptrToInt(ptr) - @sizeOf(usize));
+        return @ptrFromInt(*[*]u8, @intFromPtr(ptr) - @sizeOf(usize));
     }
 
     fn alignedAlloc(len: usize, alignment: usize) ?[*]u8 {
@@ -91,7 +91,7 @@ pub const CAllocator = struct {
         // alignment padding and store the orignal malloc()'ed pointer before
         // the aligned address.
         var unaligned_ptr = @ptrCast([*]u8, c.malloc(len + alignment - 1 + @sizeOf(usize)) orelse return null);
-        const unaligned_addr = @ptrToInt(unaligned_ptr);
+        const unaligned_addr = @intFromPtr(unaligned_ptr);
         const aligned_addr = mem.alignForward(unaligned_addr + @sizeOf(usize), alignment);
         var aligned_ptr = unaligned_ptr + (aligned_addr - unaligned_addr);
         getHeader(aligned_ptr).* = unaligned_ptr;
@@ -106,7 +106,7 @@ pub const CAllocator = struct {
 
     fn alignedAllocSize(ptr: [*]u8) usize {
         const unaligned_ptr = getHeader(ptr).*;
-        const delta = @ptrToInt(ptr) - @ptrToInt(unaligned_ptr);
+        const delta = @intFromPtr(ptr) - @intFromPtr(unaligned_ptr);
         return c.malloc_usable_size(unaligned_ptr) - delta;
     }
 };

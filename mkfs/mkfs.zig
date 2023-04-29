@@ -84,7 +84,7 @@ const Disk = struct {
             var node: Dinode = undefined;
 
             node.type = toLittle(FileType, self.type);
-            node.nlink = @intCast(i16, toLittle(u16, self.nlink));
+            node.nlink = @intCast(toLittle(u16, self.nlink));
             node.size = toLittle(u32, self.size);
 
             for (&node.addrs, 0..) |*addr, i| {
@@ -134,7 +134,7 @@ const Disk = struct {
                 inode.addrs[idx] = self.freeblock;
                 self.freeblock += 1;
             } else {
-                try self.readSector(inode.addrs[idx], @ptrCast(*[fs.BSIZE]u8, &singly_blk));
+                try self.readSector(inode.addrs[idx], @ptrCast(&singly_blk));
             }
 
             if (singly_blk[bn] == 0) {
@@ -156,7 +156,7 @@ const Disk = struct {
                 inode.addrs[idx] = self.freeblock;
                 self.freeblock += 1;
             } else {
-                try self.readSector(inode.addrs[idx], @ptrCast(*[fs.BSIZE]u8, &doubly_blk));
+                try self.readSector(inode.addrs[idx], @ptrCast(&doubly_blk));
             }
 
             var singly_blk: [fs.NINDIRECT]u32 = .{0} ** fs.NINDIRECT;
@@ -167,7 +167,7 @@ const Disk = struct {
                 self.freeblock += 1;
                 _ = try self.writeSector(inode.addrs[idx], idx2 * @sizeOf(u32), std.mem.asBytes(&doubly_blk[idx2]));
             } else {
-                try self.readSector(doubly_blk[idx2], @ptrCast(*[fs.BSIZE]u8, &singly_blk));
+                try self.readSector(doubly_blk[idx2], @ptrCast(&singly_blk));
             }
 
             const idx3 = bn % fs.NINDIRECT;
@@ -196,7 +196,7 @@ const Disk = struct {
             const offset = filesize - (fbn * fs.BSIZE);
             const nbytes = try self.writeSector(block, offset, buf[n..]);
 
-            filesize += @intCast(u32, nbytes);
+            filesize += @intCast(nbytes);
             n += nbytes;
         }
 
@@ -211,7 +211,7 @@ const Disk = struct {
         var buf: [fs.BSIZE]u8 = .{0} ** fs.BSIZE;
         var i: usize = 0;
         while (i < self.freeblock) : (i += 1) {
-            buf[i / 8] |= @as(u8, 0x1) << @intCast(u3, i % 8);
+            buf[i / 8] |= @as(u8, 0x1) << @intCast(i % 8);
         }
 
         try stdout.print("balloc: write bitmap block at sector {}\n", .{superblk.bmapstart});
@@ -257,10 +257,10 @@ pub fn main() !void {
     }
 
     for (args[2..]) |app| {
-        const shortname = blk: {
+        const shortname: [:0]const u8 = blk: {
             const name1 = std.fs.path.basename(app);
             const name2 = std.mem.trimLeft(u8, name1, "_");
-            break :blk @ptrCast([:0]const u8, name2);
+            break :blk @ptrCast(name2);
         };
 
         const file = try std.fs.cwd().openFile(app, .{});

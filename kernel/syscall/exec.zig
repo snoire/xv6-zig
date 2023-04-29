@@ -54,7 +54,7 @@ pub fn exec(path: [*:0]const u8, argv: [*:null]const ?[*:0]const u8) !c_int {
 
     // Check ELF header
     var elf: ElfHdr = undefined;
-    if (ip.read(false, @ptrToInt(&elf), 0, @sizeOf(ElfHdr)) != @sizeOf(ElfHdr))
+    if (ip.read(false, @intFromPtr(&elf), 0, @sizeOf(ElfHdr)) != @sizeOf(ElfHdr))
         @panic("BadElf");
 
     if (!std.mem.eql(u8, elf.e_ident[0..4], std.elf.MAGIC))
@@ -67,7 +67,7 @@ pub fn exec(path: [*:0]const u8, argv: [*:null]const ?[*:0]const u8) !c_int {
     var off = elf.e_phoff;
     for (0..elf.e_phnum) |_| {
         var ph: ProgHdr = undefined;
-        if (ip.read(false, @ptrToInt(&ph), off, @sizeOf(ProgHdr)) != @sizeOf(ProgHdr))
+        if (ip.read(false, @intFromPtr(&ph), off, @sizeOf(ProgHdr)) != @sizeOf(ProgHdr))
             @panic("BadProgHdr");
 
         if (ph.p_type != ELF_PROG_LOAD) @panic("p_type");
@@ -90,7 +90,7 @@ pub fn exec(path: [*:0]const u8, argv: [*:null]const ?[*:0]const u8) !c_int {
     // Allocate two pages at the next page boundary.
     // Make the first inaccessible as a stack guard.
     // Use the second as the user stack.
-    sz = std.mem.alignForward(sz, PGSIZE);
+    sz = std.mem.alignForward(usize, sz, PGSIZE);
     var sz1 = pagetable.alloc(sz, sz + 2 * PGSIZE, .{ .writable = true });
 
     sz = sz1;
@@ -118,7 +118,7 @@ pub fn exec(path: [*:0]const u8, argv: [*:null]const ?[*:0]const u8) !c_int {
     sp -= sp % 16;
 
     if (sp < stackbase) @panic("sp < stackbase");
-    if (pagetable.copyout(.{ .addr = sp }, @ptrCast([*]const u8, &ustack), (args.len + 1) * @sizeOf(usize)) < 0)
+    if (pagetable.copyout(.{ .addr = sp }, @ptrCast(&ustack), (args.len + 1) * @sizeOf(usize)) < 0)
         @panic("copyout");
 
     // arguments to user main(argc, argv)
@@ -127,9 +127,9 @@ pub fn exec(path: [*:0]const u8, argv: [*:null]const ?[*:0]const u8) !c_int {
     p.trapframe.?.a1 = sp;
 
     // Save program name for debugging.
-    const program_name = blk: {
+    const program_name: [:0]const u8 = blk: {
         const name1 = std.fs.path.basename(std.mem.span(path));
-        break :blk @ptrCast([:0]const u8, name1);
+        break :blk @ptrCast(name1);
     };
     std.mem.copy(u8, &p.name, program_name[0 .. program_name.len + 1]);
 
@@ -141,5 +141,5 @@ pub fn exec(path: [*:0]const u8, argv: [*:null]const ?[*:0]const u8) !c_int {
     p.trapframe.?.sp = sp;
     oldpagetable.freepagetable(oldsz);
 
-    return @intCast(c_int, args.len);
+    return @as(c_int, @intCast(args.len));
 }

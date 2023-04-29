@@ -5,7 +5,7 @@ const Proc = proc.Proc;
 const trap = @import("../trap.zig");
 
 pub fn exit() callconv(.C) isize {
-    proc.exit(@intCast(i32, syscall.arg(0)));
+    proc.exit(@intCast(syscall.arg(0)));
     return 0;
 }
 
@@ -25,8 +25,8 @@ pub fn wait() callconv(.C) isize {
 pub fn sbrk() callconv(.C) isize {
     var n = syscall.argint(0);
     var addr = Proc.myproc().?.sz;
-    if (proc.growproc(@intCast(i32, n)) == -1) return -1;
-    return @intCast(isize, addr);
+    if (proc.growproc(@intCast(n)) == -1) return -1;
+    return @intCast(addr);
 }
 
 pub fn sleep() callconv(.C) isize {
@@ -45,7 +45,7 @@ pub fn sleep() callconv(.C) isize {
 
 pub fn kill() callconv(.C) isize {
     var pid = syscall.argint(0);
-    return @intCast(isize, proc.kill(pid));
+    return @intCast(proc.kill(pid));
 }
 
 pub fn uptime() callconv(.C) isize {

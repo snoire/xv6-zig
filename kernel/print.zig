@@ -70,17 +70,19 @@ pub fn panicFn(msg: []const u8, _: ?*std.builtin.StackTrace, return_addr: ?usize
     pr.locking = false;
     print("\x1b[31m" ++ "KERNEL PANIC: {s}!\n" ++ "\x1b[m", .{msg});
 
-    const first_ret_addr = return_addr orelse @returnAddress();
-    var it = std.debug.StackIterator.init(first_ret_addr, null);
+    if (!@import("builtin").strip_debug_info) {
+        const first_ret_addr = return_addr orelse @returnAddress();
+        var it = std.debug.StackIterator.init(first_ret_addr, null);
 
-    print(
-        \\Use the following command to get information about the stack trace:
-        \\  zig build addr2line [other options when running xv6] --
-    , .{});
-    while (it.next()) |ret_addr| {
-        print(" 0x{x}", .{ret_addr});
+        print(
+            \\Use the following command to get information about the stack trace:
+            \\  zig build [-Doptimize=???] addr2line --
+        , .{});
+        while (it.next()) |ret_addr| {
+            print(" 0x{x}", .{ret_addr});
+        }
+        print("\n", .{});
     }
-    print("\n", .{});
 
     panicked = 1; // freeze uart output from other CPUs
     while (true) {}
@@ -92,14 +94,14 @@ export fn panic(msg: [*:0]const u8) noreturn {
 
 // workaround for https://github.com/ziglang/zig/issues/12533
 export fn putchar(char: c_int) c_int {
-    consputc(@intCast(u8, char));
+    consputc(@intCast(char));
     return 1;
 }
 export fn puts(s: [*:0]const u8) c_int {
     var i: usize = 0;
     while (s[i] > 0) : (i += 1) {
-        consputc(@intCast(u8, s[i]));
+        consputc(@intCast(s[i]));
     }
 
-    return @intCast(c_int, i);
+    return @intCast(i);
 }

@@ -152,7 +152,7 @@ fn commit() void {
 /// Copy committed blocks from log to their home location
 fn installTrans(comptime recovering: bool) void {
     for (0..header.n) |i| {
-        var lbuf = bread(dev, @intCast(c_uint, start + i + 1)); // read log block
+        var lbuf = bread(dev, @intCast(start + i + 1)); // read log block
         var dbuf = bread(dev, header.block[i]); // read dst
 
         std.mem.copy(u8, &dbuf.data, &lbuf.data);
@@ -166,7 +166,7 @@ fn installTrans(comptime recovering: bool) void {
 /// Read the log header from disk into the in-memory log header
 fn readLogHeader() void {
     var c_buf = bread(dev, start);
-    var lh = @ptrCast(*align(1) Header, &c_buf.data);
+    var lh: *align(1) Header = @ptrCast(&c_buf.data);
     header.n = lh.n;
 
     for (0..header.n) |i| {
@@ -180,7 +180,7 @@ fn readLogHeader() void {
 /// current transaction commits.
 fn writeLogHeader() void {
     var c_buf = bread(dev, start);
-    var hb = @ptrCast(*align(1) Header, &c_buf.data);
+    var hb: *align(1) Header = @ptrCast(&c_buf.data);
     hb.n = header.n;
 
     for (0..header.n) |i| {
@@ -193,7 +193,7 @@ fn writeLogHeader() void {
 /// Copy modified blocks from cache to log.
 fn writeLog() void {
     for (0..header.n) |i| {
-        var to = bread(dev, @intCast(c_uint, start + i + 1)); // log block
+        var to = bread(dev, @intCast(start + i + 1)); // log block
         var from = bread(dev, header.block[i]); // cache block
 
         std.mem.copy(u8, &to.data, &from.data);

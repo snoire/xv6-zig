@@ -16,7 +16,7 @@ pub const PGSIZE = vm.PGSIZE;
 pub const KSTACK_NUM = 4;
 
 /// trampoline.S
-extern const trampoline: u1;
+extern const trampoline: u8;
 
 var cpus: [xv6.NCPU]c.Cpu = undefined;
 var proc: [xv6.NPROC]Proc = undefined;
@@ -132,15 +132,15 @@ pub const Proc = extern struct {
         p.state = .used;
 
         // Allocate a trapframe page.
-        p.trapframe = @alignCast(PGSIZE, try allocator.create(c.TrapFrame));
+        p.trapframe = @alignCast(try allocator.create(c.TrapFrame));
 
         // An empty user page table.
         p.pagetable = try createPagetable(p);
 
         // Set up new context to start executing at forkret,
         // which returns to user space.
-        std.mem.set(u8, std.mem.asBytes(&p.context), 0);
-        p.context.ra = @ptrToInt(&forkret);
+        @memset(std.mem.asBytes(&p.context), 0);
+        p.context.ra = @intFromPtr(&forkret);
         p.context.sp = p.kstack;
 
         return p;
@@ -156,14 +156,14 @@ pub const Proc = extern struct {
         // at the highest user virtual address.
         // only the supervisor uses it, on the way
         // to/from user space, so not PTE_U.
-        pagetable.mappages(.{ .addr = TRAMPOLINE }, PGSIZE, .{ .addr = @ptrToInt(&trampoline) }, .{
+        pagetable.mappages(.{ .addr = TRAMPOLINE }, PGSIZE, .{ .addr = @intFromPtr(&trampoline) }, .{
             .readable = true,
             .executable = true,
         });
 
         // map the trapframe page just below the trampoline page, for
         // trampoline.S.
-        pagetable.mappages(.{ .addr = TRAPFRAME }, PGSIZE, .{ .addr = @ptrToInt(p.trapframe) }, .{
+        pagetable.mappages(.{ .addr = TRAPFRAME }, PGSIZE, .{ .addr = @intFromPtr(p.trapframe) }, .{
             .readable = true,
             .writable = true,
         });
@@ -275,12 +275,12 @@ pub fn growproc(n: i32) c_int {
     var sz = p.sz;
 
     if (n > 0) {
-        sz = p.pagetable.alloc(sz, sz + @intCast(usize, n), .{
+        sz = p.pagetable.alloc(sz, sz + @as(usize, @intCast(n)), .{
             .writable = true,
         });
         if (sz < 0) @panic("growproc");
     } else {
-        sz = p.pagetable.dealloc(sz, sz + @intCast(usize, n));
+        sz = p.pagetable.dealloc(sz, sz + @as(usize, @intCast(n)));
     }
 
     p.sz = sz;
@@ -396,7 +396,7 @@ pub fn wait(addr: usize) u32 {
             var pid = pp.pid;
             if (addr != 0 and p.pagetable.copyout(
                 .{ .addr = addr },
-                @ptrCast([*]const u8, &pp.xstate),
+                @ptrCast(&pp.xstate),
                 @sizeOf(c_int),
             ) < 0) {
                 @panic("wait");

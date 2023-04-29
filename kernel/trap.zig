@@ -32,7 +32,7 @@ pub fn init() void {
 
 /// set up to take exceptions and traps while in the kernel.
 pub fn inithart() void {
-    csr.write(.stvec, @ptrToInt(&kernelvec));
+    csr.write(.stvec, @intFromPtr(&kernelvec));
 }
 
 /// handle an interrupt, exception, or system call from user space.
@@ -44,7 +44,7 @@ export fn usertrap() void {
 
     // send interrupts and exceptions to kerneltrap(),
     // since we're now in the kernel.
-    csr.write(.stvec, @ptrToInt(&kernelvec));
+    csr.write(.stvec, @intFromPtr(&kernelvec));
 
     var p = Proc.myproc().?;
 
@@ -87,9 +87,9 @@ export fn usertrap() void {
 }
 
 // trampoline.S
-extern const trampoline: u1;
-extern const uservec: u1;
-extern const userret: u1;
+extern const trampoline: u8;
+extern const uservec: u8;
+extern const userret: u8;
 
 /// return to user space
 export fn usertrapret() void {
@@ -101,8 +101,8 @@ export fn usertrapret() void {
     intrOff();
 
     // send syscalls, interrupts, and exceptions to uservec in trampoline.S
-    const uservec_addr = @ptrToInt(&uservec);
-    const trampoline_addr = @ptrToInt(&trampoline);
+    const uservec_addr = @intFromPtr(&uservec);
+    const trampoline_addr = @intFromPtr(&trampoline);
 
     const trampoline_uservec = TRAMPOLINE + (uservec_addr - trampoline_addr);
     csr.write(.stvec, trampoline_uservec);
@@ -111,7 +111,7 @@ export fn usertrapret() void {
     // the process next traps into the kernel.
     p.trapframe.?.kernel_satp = csr.read(.satp); // kernel page table
     p.trapframe.?.kernel_sp = p.kstack; // process's kernel stack
-    p.trapframe.?.kernel_trap = @ptrToInt(&usertrap);
+    p.trapframe.?.kernel_trap = @intFromPtr(&usertrap);
     p.trapframe.?.kernel_hartid = gpr.read(.tp); // hartid for cpuid()
 
     // set up the registers that trampoline.S's sret will use
@@ -133,9 +133,9 @@ export fn usertrapret() void {
     // jump to userret in trampoline.S at the top of memory, which
     // switches to the user page table, restores user registers,
     // and switches to user mode with sret.
-    const userret_addr = @ptrToInt(&userret);
+    const userret_addr = @intFromPtr(&userret);
     const trampoline_userret = TRAMPOLINE + (userret_addr - trampoline_addr);
-    const userret_fn = @intToPtr(*const fn (csr.satp) void, trampoline_userret);
+    const userret_fn: *const fn (csr.satp) void = @ptrFromInt(trampoline_userret);
     userret_fn(satp);
 }
 
@@ -170,7 +170,7 @@ export fn kerneltrap() void {
     // the yield() may have caused some traps to occur,
     // so restore trap registers for use by kernelvec.S's sepc instruction.
     csr.write(.sepc, sepc);
-    csr.write(.sstatus, @bitCast(usize, sstatus));
+    csr.write(.sstatus, @bitCast(sstatus));
 }
 
 extern fn cpuid() usize;
@@ -184,14 +184,14 @@ fn devintr() u32 {
     const scause = csr.scause.read();
 
     if (scause.interrupt) {
-        const interrupt_code = @intToEnum(csr.scause.Interrupt, scause.code);
+        const interrupt_code: csr.scause.Interrupt = @enumFromInt(scause.code);
         switch (interrupt_code) {
             .@"Supervisor external interrupt" => {
                 // this is a supervisor external interrupt, via PLIC.
 
                 const target = plic.Target{
                     .mode = .supervisor,
-                    .hart = @intCast(u3, cpuid()),
+                    .hart = @intCast(cpuid()),
                 };
 
                 // irq indicates which device interrupted.
@@ -200,7 +200,7 @@ fn devintr() u32 {
                 switch (irq) {
                     .virtio0 => c.virtio_disk_intr(),
                     .uart0 => c.uartintr(),
-                    else => print("unexpected interrupt irq={}\n", .{@enumToInt(irq)}),
+                    else => print("unexpected interrupt irq={}\n", .{@intFromEnum(irq)}),
                 }
 
                 // the PLIC allows each device to raise at most one

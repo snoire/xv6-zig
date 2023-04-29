@@ -10,7 +10,7 @@ pub fn getStdIn() Reader {
 fn read(fd: sys.fd_t, buffer: []u8) error{}!usize {
     const nbyte = sys.read(fd, buffer.ptr, buffer.len);
     if (nbyte < 0) @panic("read error");
-    return @intCast(usize, nbyte);
+    return @as(usize, @intCast(nbyte));
 }
 
 pub fn gets(buffer: []u8) !?[]u8 {
@@ -31,7 +31,7 @@ pub fn getStdErr() Writer {
 fn write(fd: sys.fd_t, string: []const u8) error{}!usize {
     const nbyte = sys.write(fd, string.ptr, string.len);
     if (nbyte < 0) @panic("write error");
-    return @intCast(usize, nbyte);
+    return @as(usize, @intCast(nbyte));
 }
 
 pub fn print(comptime format: []const u8, args: anytype) void {

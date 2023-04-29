@@ -26,10 +26,10 @@ export fn main() noreturn {
             _ = sys.close(parent_fd[1]); // close the write end of the parent pipe
             _ = sys.close(child_fd[0]); // close the read end of the child pipe
 
-            const nbytes = blk: {
+            const nbytes: usize = blk: {
                 const n = sys.read(parent_fd[0], &buf, buf.len);
                 if (n < 0) sys.exit(0);
-                break :blk @intCast(usize, n);
+                break :blk @intCast(n);
             };
             print("{}: received {s}\n", .{ sys.getpid(), buf[0..nbytes] });
             _ = sys.write(child_fd[1], "pong", 5);
@@ -39,10 +39,10 @@ export fn main() noreturn {
             _ = sys.close(child_fd[1]);
 
             _ = sys.write(parent_fd[1], "ping", 5);
-            const nbytes = blk: {
+            const nbytes: usize = blk: {
                 const n = sys.read(child_fd[0], &buf, buf.len);
                 if (n < 0) sys.exit(0);
-                break :blk @intCast(usize, n);
+                break :blk @intCast(n);
             };
             _ = sys.read(child_fd[0], &buf, buf.len);
             print("{}: received {s}\n", .{ sys.getpid(), buf[0..nbytes] });

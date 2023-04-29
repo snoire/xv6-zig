@@ -111,7 +111,7 @@ const Parser = struct {
 
         // The string is not currently null-terminated, although we cast it
         // to `[*:0]const u8`. Do not use it until the whole cmd is parsed.
-        return Token{ .cmd = @ptrCast([*:0]const u8, self.buf[start..self.pos]) };
+        return Token{ .cmd = @ptrCast(self.buf[start..self.pos]) };
     }
 };
 
@@ -153,7 +153,7 @@ fn run() !void {
         const cmd = (try getcmd(&buf)).?;
         if (cmd.len >= 3 and std.mem.eql(u8, cmd[0..3], "cd ")) {
             // Chdir must be called by the parent, not the child.
-            const path = @ptrCast([*:0]u8, buf[3..cmd.len :0]);
+            const path: [*:0]u8 = @ptrCast(buf[3..cmd.len :0]);
             if (sys.chdir(path) < 0)
                 try out.print("cannot cd {s}\n", .{cmd[3..]});
 
@@ -166,7 +166,7 @@ fn run() !void {
 }
 
 fn getcmd(buf: []u8) !?[]u8 {
-    std.mem.set(u8, buf, 0);
+    @memset(buf, 0);
     try out.writeAll(color.yellow ++ "$ " ++ color.none);
 
     var cmd = (try lib.gets(buf)) orelse return null;
@@ -179,8 +179,7 @@ fn runcmd(cmd: Cmd) noreturn {
     switch (cmd) {
         .Exec => |exec| {
             if (exec.argv[0] == null) sys.exit(0);
-            const argv = @ptrCast([*:null]const ?[*:0]const u8, &exec.argv);
-            _ = sys.exec(exec.argv[0].?, argv);
+            _ = sys.exec(exec.argv[0].?, @ptrCast(&exec.argv));
 
             try out.print("exec {?s} failed\n", .{exec.argv[0]});
         },

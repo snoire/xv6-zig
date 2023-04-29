@@ -17,9 +17,9 @@ pub const PHYSTOP = KERNBASE + TOTAL_BYTES;
 const KSTACK_NUM = 4;
 
 /// kernel.ld sets this to end of kernel code.
-extern const etext: u1;
+extern const etext: u8;
 /// trampoline.S
-extern const trampoline: u1;
+extern const trampoline: u8;
 
 /// the kernel's page table.
 var kernel_pagetable: PageTable = undefined;
@@ -64,7 +64,7 @@ pub const VirAddr = packed union {
     const Self = @This();
 
     fn roundDown(self: Self) Self {
-        return .{ .addr = alignBackward(self.addr, PGSIZE) };
+        return .{ .addr = alignBackward(usize, self.addr, PGSIZE) };
     }
 };
 
@@ -99,10 +99,10 @@ pub const PhyAddr = packed union {
     // TODO: maybe we don't need it
     pub fn create() !Self {
         const page = try allocator.create(Page);
-        std.mem.set(u8, page, 0);
+        @memset(page, 0);
 
         return .{
-            .page = @alignCast(PGSIZE, page),
+            .page = @alignCast(page),
         };
     }
 };
@@ -118,10 +118,10 @@ pub const PageTable = packed union {
 
     pub fn create() !Self {
         const page = try allocator.create(Page);
-        std.mem.set(u8, page, 0);
+        @memset(page, 0);
 
         return .{
-            .page = @alignCast(PGSIZE, page),
+            .page = @alignCast(page),
         };
     }
 
@@ -185,7 +185,7 @@ pub const PageTable = packed union {
 
         var pa = paddress;
         var va = vaddress.roundDown();
-        const last = alignBackward(vaddress.addr + size - 1, PGSIZE);
+        const last = alignBackward(usize, vaddress.addr + size - 1, PGSIZE);
 
         while (true) {
             var pte = pagetable.walk(va, true) catch unreachable;
@@ -211,7 +211,7 @@ pub const PageTable = packed union {
         while (addr.addr < va.addr + npages * PGSIZE) : (addr.addr += PGSIZE) {
             var pte = pagetable.walk(addr, false) catch unreachable;
             if (!pte.flags.valid) @panic("uvmunmap: not mapped");
-            if (@bitCast(u8, pte.flags) == @bitCast(u8, Pte.Flags{ .valid = true })) {
+            if (@as(u8, @bitCast(pte.flags)) == @as(u8, @bitCast(Pte.Flags{ .valid = true }))) {
                 @panic("uvmunmap: not a leaf");
             }
             if (do_free) {
@@ -247,7 +247,7 @@ pub const PageTable = packed union {
         flags.readable = true;
         flags.user = true;
 
-        var addr = std.mem.alignForward(oldsz, PGSIZE);
+        var addr = std.mem.alignForward(usize, oldsz, PGSIZE);
         while (addr < newsz) : (addr += PGSIZE) {
             var mem = PhyAddr.create() catch |err| @panic(@errorName(err));
             pagetable.mappages(.{ .addr = addr }, PGSIZE, mem, flags);
@@ -262,8 +262,8 @@ pub const PageTable = packed union {
     pub fn dealloc(pagetable: PageTable, oldsz: usize, newsz: usize) usize {
         if (newsz < oldsz) return oldsz;
 
-        var old = std.mem.alignForward(oldsz, PGSIZE);
-        var new = std.mem.alignForward(newsz, PGSIZE);
+        var old = std.mem.alignForward(usize, oldsz, PGSIZE);
+        var new = std.mem.alignForward(usize, newsz, PGSIZE);
         if (old < new) {
             var npages = (old - new) / PGSIZE;
             pagetable.unmap(.{ .addr = newsz }, npages, true);
@@ -293,7 +293,7 @@ pub const PageTable = packed union {
     /// Free user memory pages,
     /// then free page-table pages.
     pub fn free(pagetable: PageTable, sz: usize) void {
-        pagetable.unmap(.{ .addr = 0 }, std.mem.alignForward(sz, PGSIZE) / PGSIZE, true);
+        pagetable.unmap(.{ .addr = 0 }, std.mem.alignForward(usize, sz, PGSIZE) / PGSIZE, true);
         freewalk(pagetable);
     }
 
@@ -436,15 +436,15 @@ pub const Pte = packed struct {
     }
 
     fn getPageTable(self: @This()) PageTable {
-        return @bitCast(PageTable, PhyAddr{
+        return @bitCast(PhyAddr{
             .phy = .{ .ppn = self.ppn },
         });
     }
 };
 
 pub fn init() void {
-    const etext_addr = @ptrToInt(&etext);
-    const trampoline_addr = @ptrToInt(&trampoline);
+    const etext_addr = @intFromPtr(&etext);
+    const trampoline_addr = @intFromPtr(&trampoline);
 
     kernel_pagetable = PageTable.create() catch unreachable;
 
@@ -490,8 +490,8 @@ pub fn init() void {
     // guard page.
     for (1..xv6.NPROC) |i| {
         const pages = allocator.create([KSTACK_NUM * PGSIZE]u8) catch unreachable;
-        std.mem.set(u8, pages, 0);
-        const phy_addr = PhyAddr{ .addr = @ptrToInt(pages) };
+        @memset(pages, 0);
+        const phy_addr = PhyAddr{ .addr = @intFromPtr(pages) };
 
         kernel_pagetable.mappages(
             .{ .addr = TRAMPOLINE - (i * (KSTACK_NUM + 1) * PGSIZE) },

@@ -85,8 +85,8 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
-    initcode_elf.addAssemblyFile("user/initcode.S");
-    initcode_elf.addIncludePath("kernel/");
+    initcode_elf.addAssemblyFile(.{ .path = "user/initcode.S" });
+    initcode_elf.addIncludePath(.{ .path = "kernel/" });
     initcode_elf.setLinkerScriptPath(.{ .path = "user/initcode.ld" });
 
     const initcode_bin = initcode_elf.addObjCopy(.{ .format = .bin });
@@ -99,15 +99,18 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
-    kernel.addIncludePath("kernel/");
+    kernel.addIncludePath(.{ .path = "kernel/" });
     kernel.setLinkerScriptPath(.{ .path = "kernel/kernel.ld" });
 
     inline for (kfiles) |f| {
         const path = "kernel/" ++ f;
         if (std.mem.endsWith(u8, f, ".S")) {
-            kernel.addAssemblyFile(path);
+            kernel.addAssemblyFile(.{ .path = path });
         } else {
-            kernel.addCSourceFile(path, &.{});
+            kernel.addCSourceFile(.{
+                .file = .{ .path = path },
+                .flags = &.{},
+            });
         }
     }
 
@@ -120,9 +123,9 @@ pub fn build(b: *std.Build) void {
     kernel.omit_frame_pointer = false;
     kernel.disable_sanitize_c = true; // TODO: fix it
 
-    kernel.override_dest_dir = .{ .custom = "./" };
-
-    const install_kernel = b.addInstallArtifact(kernel);
+    const install_kernel = b.addInstallArtifact(kernel, .{
+        .dest_dir = .{ .override = .{ .custom = "./" } },
+    });
     b.getInstallStep().dependOn(&install_kernel.step);
 
     const kernel_tls = b.step("kernel", "Build kernel");
@@ -135,17 +138,19 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
-    mkfs.addIncludePath("./");
+    mkfs.addIncludePath(.{ .path = "./" });
     mkfs.addAnonymousModule("kernel", .{
         .source_file = FileSource.relative("kernel/xv6.zig"),
     });
 
     mkfs.strip = strip;
     mkfs.single_threaded = true;
-    mkfs.override_dest_dir = .{ .custom = "./" };
 
     const mkfs_tls = b.step("mkfs", "Build mkfs");
-    mkfs_tls.dependOn(&b.addInstallArtifact(mkfs).step);
+    const install_mkfs = b.addInstallArtifact(mkfs, .{
+        .dest_dir = .{ .override = .{ .custom = "./" } },
+    });
+    mkfs_tls.dependOn(&install_mkfs.step);
 
     // build user applications
     apps_step = b.step("apps", "Compiles apps");
@@ -281,8 +286,8 @@ fn buildApp(b: *std.Build, comptime appName: []const u8, comptime lang: enum { c
     });
 
     if (lang == .c) {
-        app.addIncludePath("./");
-        app.addObjectFile("user/usys.zig");
+        app.addIncludePath(.{ .path = "./" });
+        app.addObjectFile(.{ .path = "user/usys.zig" });
         app.addCSourceFiles(&.{
             "user/" ++ appName ++ ".c",
             "user/ulib.c",
@@ -290,8 +295,11 @@ fn buildApp(b: *std.Build, comptime appName: []const u8, comptime lang: enum { c
             "user/umalloc.c",
         }, &.{});
     } else {
-        app.addIncludePath("./");
-        app.addCSourceFile("user/umalloc.c", &.{});
+        app.addIncludePath(.{ .path = "./" });
+        app.addCSourceFile(.{
+            .file = .{ .path = "user/umalloc.c" },
+            .flags = &.{},
+        });
     }
 
     app.strip = strip;
@@ -299,8 +307,10 @@ fn buildApp(b: *std.Build, comptime appName: []const u8, comptime lang: enum { c
     app.omit_frame_pointer = false;
     app.setLinkerScriptPath(.{ .path = "user/app.ld" });
 
-    app.override_dest_dir = .{ .custom = "apps/" };
-    apps_step.dependOn(&b.addInstallArtifact(app).step);
+    const install_app = b.addInstallArtifact(app, .{
+        .dest_dir = .{ .override = .{ .custom = "apps/" } },
+    });
+    apps_step.dependOn(&install_app.step);
 
     return app.getOutputSource();
 }

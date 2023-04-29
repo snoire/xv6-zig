@@ -14,7 +14,7 @@ fn fetchAddr(addr: usize) usize {
     }
 
     var ip: usize = undefined;
-    _ = p.pagetable.copyin(@ptrCast([*]u8, &ip), .{ .addr = addr }, @sizeOf(usize));
+    _ = p.pagetable.copyin(@ptrCast(&ip), .{ .addr = addr }, @sizeOf(usize));
     return ip;
 }
 
@@ -53,7 +53,7 @@ fn fdalloc(f: *c.File) u32 {
     return for (&p.ofile, 0..) |*ofile, i| {
         if (ofile.* == null) {
             ofile.* = f;
-            break @intCast(u32, i);
+            break @intCast(i);
         }
     } else @panic("fdalloc");
 }
@@ -69,14 +69,14 @@ pub fn read() callconv(.C) isize {
     var f = argfile(0);
     var p = syscall.argaddr(1);
     var n = syscall.argint(2);
-    return @intCast(isize, f.read(p, n));
+    return @intCast(f.read(p, n));
 }
 
 pub fn write() callconv(.C) isize {
     var f = argfile(0);
     var p = syscall.argaddr(1);
     var n = syscall.argint(2);
-    return @intCast(isize, f.write(p, n));
+    return @intCast(f.write(p, n));
 }
 
 pub fn close() callconv(.C) isize {
@@ -90,7 +90,7 @@ pub fn close() callconv(.C) isize {
 pub fn fstat() callconv(.C) isize {
     var f = argfile(0);
     var st = syscall.argaddr(1);
-    return @intCast(isize, f.stat(st));
+    return @intCast(f.stat(st));
 }
 
 /// Create the path new as a link to the same inode as old.
@@ -131,7 +131,7 @@ fn isdirempty(dp: *c.Inode) bool {
     var off: usize = 2 * @sizeOf(c.Dirent); // skip "." and ".."
 
     while (off < dp.size) : (off += @sizeOf(c.Dirent)) {
-        var nbytes = dp.read(false, @ptrToInt(&de), @intCast(u32, off), @sizeOf(c.Dirent));
+        var nbytes = dp.read(false, @intFromPtr(&de), @intCast(off), @sizeOf(c.Dirent));
         if (nbytes != @sizeOf(c.Dirent)) @panic("isdirempty: readi");
         if (de.inum != 0) return false;
     } else {
@@ -167,7 +167,7 @@ pub fn unlink() callconv(.C) isize {
     }
 
     var de = std.mem.zeroes(c.Dirent);
-    var nbytes = dp.write(false, @ptrToInt(&de), off, @sizeOf(c.Dirent));
+    var nbytes = dp.write(false, @intFromPtr(&de), off, @sizeOf(c.Dirent));
 
     if (nbytes != @sizeOf(c.Dirent)) {
         @panic("unlink: writei");
@@ -273,8 +273,8 @@ pub fn open() callconv(.C) isize {
     }
 
     f.ip = ip;
-    f.readable = @boolToInt(!(omode & O.WRONLY != 0));
-    f.writable = @boolToInt((omode & O.WRONLY != 0) or (omode & O.RDWR != 0));
+    f.readable = @intFromBool(!(omode & O.WRONLY != 0));
+    f.writable = @intFromBool((omode & O.WRONLY != 0) or (omode & O.RDWR != 0));
 
     if ((omode & O.TRUNC != 0) and ip.type == .file) {
         ip.trunc();
@@ -303,8 +303,8 @@ pub fn mknod() callconv(.C) isize {
     var path_buf: [xv6.MAXPATH]u8 = undefined;
     var path = argstr(0, &path_buf);
 
-    var major = @intCast(c_short, syscall.argint(1));
-    var minor = @intCast(c_short, syscall.argint(2));
+    var major: c_short = @intCast(syscall.argint(1));
+    var minor: c_short = @intCast(syscall.argint(2));
 
     var ip = create(path, .device, major, minor).?;
     ip.unlockput();
@@ -342,7 +342,7 @@ pub fn exec() callconv(.C) isize {
 
     var uargv = syscall.argaddr(1);
 
-    var argv: [xv6.MAXARG - 1:null]?[*:0]u8 = .{null} ** xv6.MAXARG;
+    var argv: [xv6.MAXARG - 1:null]?[*:0]const u8 = .{null} ** xv6.MAXARG;
 
     for (0..xv6.MAXARG) |i| {
         var uarg = fetchAddr(uargv + i * @sizeOf(usize));
@@ -373,14 +373,14 @@ pub fn pipe() callconv(.C) isize {
 
     var ret = p.pagetable.copyout(
         .{ .addr = fdarray },
-        @ptrCast([*]u8, &fd0),
+        @ptrCast(&fd0),
         @sizeOf(@TypeOf(fd0)),
     );
     if (ret < 0) @panic("copyout");
 
     ret = p.pagetable.copyout(
         .{ .addr = fdarray + @sizeOf(@TypeOf(fd0)) },
-        @ptrCast([*]u8, &fd1),
+        @ptrCast(&fd1),
         @sizeOf(@TypeOf(fd1)),
     );
     if (ret < 0) @panic("copyout");

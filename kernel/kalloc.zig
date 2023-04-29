@@ -26,9 +26,9 @@ export fn kalloc() *align(PGSIZE) Page {
     var page = allocator.create(Page) catch |err| @panic(@errorName(err));
 
     // clear the page
-    std.mem.set(u8, page, 0);
+    @memset(page, 0);
 
-    return @alignCast(PGSIZE, page);
+    return @alignCast(page);
 }
 
 /// Free the page of physical memory pointed at by `page`,
@@ -37,7 +37,7 @@ export fn kalloc() *align(PGSIZE) Page {
 /// initializing the allocator; see kinit above.)
 export fn kfree(page: *align(PGSIZE) Page) void {
     // Fill with junk to catch dangling refs.
-    std.mem.set(u8, page, 1);
+    @memset(page, 1);
 
     allocator.destroy(page);
 }
