@@ -1,8 +1,6 @@
 const std = @import("std");
-const assert = std.debug.assert;
-const maxInt = std.math.maxInt;
 const mem = std.mem;
-const Allocator = std.mem.Allocator;
+const Allocator = mem.Allocator;
 const SpinLock = @import("SpinLock.zig");
 
 pub const PGSIZE = 4096;
@@ -14,7 +12,7 @@ pub const PHYSTOP = KERNBASE + TOTAL_BYTES;
 
 pub const vtable = Allocator.VTable{
     .alloc = alloc,
-    .resize = resize,
+    .resize = Allocator.noResize,
     .free = free,
 };
 
@@ -22,11 +20,16 @@ pub const vtable = Allocator.VTable{
 /// defined by kernel.ld.
 extern const heap_start: u8;
 
+/// a singly linked list of memory pages, each node
+/// represents one or more contiguous memory pages
 const Run = struct {
-    next: ?*align(PGSIZE) Run,
+    /// next points to the next node in the linked list
+    next: ?*align(PGSIZE) Run = null,
+    /// len is the number of pages in this node
+    len: usize,
 };
 
-var lock: SpinLock = SpinLock.init("PageAllocator");
+var lock = SpinLock.init("PageAllocator");
 var freelist: ?*align(PGSIZE) Run = null;
 
 pub fn init() void {
@@ -34,86 +37,61 @@ pub fn init() void {
     const heap: [*]align(PGSIZE) Page = @ptrFromInt(heap_addr);
     const pages = heap[0 .. (PHYSTOP - heap_addr) / PGSIZE];
 
-    // the first page
     freelist = @ptrCast(&pages[0]);
-
-    var ptr = freelist;
-    for (pages[1..]) |*page| {
-        var r: *align(PGSIZE) Run = @ptrCast(page);
-        ptr.?.next = r;
-        ptr = r;
-    }
-
-    // the last page
-    ptr.?.next = null;
+    freelist.?.* = .{ .len = pages.len };
 }
 
-/// previous -> [start ... end] -> next
-/// allocate pages[start..end]
 fn alloc(_: *anyopaque, n: usize, log2_align: u8, ra: usize) ?[*]u8 {
     _ = ra;
     _ = log2_align;
-    assert(n > 0);
+    std.debug.assert(n > 0);
 
-    if (n > maxInt(usize) - (PGSIZE - 1)) return null;
+    if (n > std.math.maxInt(usize) - (PGSIZE - 1)) return null;
     const aligned_len = mem.alignForward(usize, n, PGSIZE);
     const npages = aligned_len / PGSIZE;
 
     lock.acquire();
     defer lock.release();
 
-    var start = freelist;
-    var previous = freelist;
-    var next: *align(PGSIZE) Run = undefined;
+    // ?previous -> target -> ?next
+    var previous: ?*align(PGSIZE) Run = null;
 
-    // searches for n consecutive nodes that are physically adjacent in memory
-    {
-        var i: usize = 0;
-        var prev = freelist;
-        var ptr = freelist;
+    // target points to a node with enough pages
+    const target = blk: {
+        var it = freelist;
+        break :blk while (it) |node| : (it = node.next) {
+            if (node.len >= npages) break node;
+            previous = node;
+        } else return null;
+    };
 
-        while (i < npages) : (i += 1) {
-            var p = ptr orelse return null;
-
-            if (@intFromPtr(p) > @intFromPtr(start.?) + PGSIZE * i) {
-                start = p;
-                previous = prev;
-                i = 0;
-            }
-
-            prev = p;
-            ptr = p.next;
+    // if target is exact size, remove it from freelist
+    if (target.len == npages) {
+        if (previous) |prev| {
+            prev.next = target.next;
+        } else {
+            freelist = target.next;
         }
+    } else { // otherwise split target into two nodes
+        const rest: *align(PGSIZE) Run = blk: {
+            const addr: [*]align(PGSIZE) Page = @ptrCast(target);
+            break :blk @ptrCast(&addr[npages]);
+        };
+        rest.* = .{
+            .next = target.next,
+            .len = target.len - npages,
+        };
 
-        next = ptr.?;
+        if (previous) |prev| {
+            prev.next = rest;
+        } else {
+            freelist = rest;
+        }
     }
 
-    if (start == freelist) { // `start` is the first page
-        freelist = next;
-    } else {
-        previous.?.next = next;
-    }
-
-    return @ptrCast(start.?);
+    return @ptrCast(target);
 }
 
-/// unsupported
-fn resize(
-    _: *anyopaque,
-    buf_unaligned: []u8,
-    log2_buf_align: u8,
-    new_size: usize,
-    return_address: usize,
-) bool {
-    _ = return_address;
-    _ = new_size;
-    _ = log2_buf_align;
-    _ = buf_unaligned;
-
-    return false;
-}
-
-/// previous -> [start ... end] -> next
 fn free(_: *anyopaque, slice: []u8, log2_buf_align: u8, return_address: usize) void {
     _ = log2_buf_align;
     _ = return_address;
@@ -125,38 +103,44 @@ fn free(_: *anyopaque, slice: []u8, log2_buf_align: u8, return_address: usize) v
     lock.acquire();
     defer lock.release();
 
-    // update linked list
+    // ?previous -> target -> ?next
+    var target: *align(PGSIZE) Run = @ptrFromInt(addr);
+    target.len = npages;
     var next: ?*align(PGSIZE) Run = undefined;
-    var start: *align(PGSIZE) Run = @ptrCast(@alignCast(slice.ptr));
 
+    // insert target into freelist
     if (freelist == null or addr < @intFromPtr(freelist.?)) {
-        next = freelist orelse null;
-        freelist = start;
+        // insert at head
+        next = freelist;
+        freelist = target;
     } else {
-        var previous = blk: {
-            var ptr = freelist;
-            var prev = freelist;
-
-            while (@intFromPtr(ptr.?) <= addr - PGSIZE) {
-                prev = ptr;
-
-                ptr = ptr.?.next;
-                if (ptr == null) break;
+        // find insert position
+        var it = freelist;
+        var previous: *align(PGSIZE) Run = while (true) {
+            if (it.?.next) |n| {
+                if (@intFromPtr(n) > addr) break it.?;
+                it = n;
+            } else {
+                break it.?;
             }
-
-            break :blk prev.?;
-        };
+        } else unreachable;
 
         next = previous.next;
-        previous.next = start;
+
+        // try merging with previous
+        if (@intFromPtr(previous) + previous.len * PGSIZE == @intFromPtr(target)) {
+            previous.len += target.len;
+            target = previous;
+        } else {
+            previous.next = target;
+        }
     }
 
-    var ptr = start;
-    for (1..npages) |i| {
-        const r: *align(PGSIZE) Run = @ptrFromInt(addr + PGSIZE * i);
-        ptr.next = r;
-        ptr = r;
+    // try merging with next
+    if (next != null and @intFromPtr(target) + target.len * PGSIZE == @intFromPtr(next.?)) {
+        target.len += next.?.len;
+        target.next = next.?.next;
+    } else {
+        target.next = next;
     }
-
-    ptr.next = next;
 }
