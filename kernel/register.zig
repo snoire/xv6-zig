@@ -82,11 +82,14 @@ pub const csr = struct {
         pmpcfg0,
     };
 
-    // All the following packed structs must be 64bit.
     comptime {
         for (std.meta.fields(Register)) |field| {
             if (@hasDecl(csr, field.name)) {
-                std.debug.assert(@bitSizeOf(@field(csr, field.name)) == 64);
+                const s = @field(csr, field.name);
+                // All the following packed structs must be 64bit.
+                std.debug.assert(@bitSizeOf(s) == 64);
+                // Confirm the struct.tag name is the same as the struct name.
+                std.debug.assert(std.mem.eql(u8, field.name, @tagName(s.tag)));
             }
         }
     }
