@@ -176,6 +176,7 @@ pub fn build(b: *std.Build) void {
 
     // fs.img will be regenerated when README are modified.
     run_mkfs.extra_file_dependencies = &.{"README.md"};
+    _ = run_mkfs.captureStdErr();
 
     const install_fs_img = b.addInstallFile(fs_img, "fs.img");
     b.getInstallStep().dependOn(&install_fs_img.step);

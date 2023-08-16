@@ -2,7 +2,7 @@ const std = @import("std");
 const kernel = @import("kernel");
 const c = kernel.c;
 const fs = kernel.fs;
-const stdout = std.io.getStdOut().writer();
+const log = std.log.scoped(.mkfs);
 const assert = std.debug.assert;
 const toLittle = std.mem.nativeToLittle; // convert to riscv byte order
 
@@ -205,7 +205,7 @@ const Disk = struct {
 
     /// write to bitmap
     fn writeBitmap(self: Disk) !void {
-        try stdout.print("balloc: first {} blocks have been allocated\n", .{self.freeblock});
+        log.info("balloc: first {} blocks have been allocated", .{self.freeblock});
         assert(self.freeblock < fs.BSIZE * 8);
 
         var buf: [fs.BSIZE]u8 = .{0} ** fs.BSIZE;
@@ -214,7 +214,7 @@ const Disk = struct {
             buf[i / 8] |= @as(u8, 0x1) << @intCast(i % 8);
         }
 
-        try stdout.print("balloc: write bitmap block at sector {}\n", .{superblk.bmapstart});
+        log.info("balloc: write bitmap block at sector {}", .{superblk.bmapstart});
         _ = try self.writeSector(superblk.bmapstart, 0, &buf);
     }
 };
@@ -228,12 +228,12 @@ pub fn main() !void {
     defer allocator.free(args);
 
     if (args.len < 2) {
-        try stdout.print("Usage: {s} fs.img files...\n", .{args[0]});
+        log.err("Usage: {s} fs.img files...", .{args[0]});
         return;
     }
 
-    try stdout.print(
-        "nmeta {} (boot, super, log blocks {} inode blocks {}, bitmap blocks {}) blocks {} total {}\n",
+    log.info(
+        "nmeta {} (boot, super, log blocks {} inode blocks {}, bitmap blocks {}) blocks {} total {}",
         .{ nmeta, nlog, ninodeblocks, nbitmap, nblocks, kernel.FSSIZE },
     );
 
