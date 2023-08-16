@@ -1,14 +1,19 @@
 const std = @import("std");
 const SpinLock = @import("SpinLock.zig");
 
+pub const color = struct {
+    pub const red = "\x1b[31m";
+    pub const green = "\x1b[32m";
+    pub const yellow = "\x1b[33m";
+    pub const none = "\x1b[m";
+};
+
 extern fn consputc(char: u8) void;
 
 export var panicked: c_int = 0;
 
-var pr: struct {
-    lock: SpinLock = SpinLock.init("pr"),
-    locking: bool = true,
-} = .{};
+var lock: SpinLock = SpinLock.init("pr");
+var locking: bool = true;
 
 fn write(_: void, string: []const u8) error{}!usize {
     for (string) |char| {
@@ -24,20 +29,18 @@ fn print(comptime format: []const u8, args: anytype) void {
 }
 
 pub fn printFn(comptime format: []const u8, args: anytype) void {
-    const locking = pr.locking;
-    if (locking) pr.lock.acquire();
+    if (locking) lock.acquire();
 
     print(format, args);
 
-    if (locking) pr.lock.release();
+    if (locking) lock.release();
 }
 
 export fn printf(format: [*:0]const u8, ...) void {
     var ap = @cVaStart();
     defer @cVaEnd(&ap);
 
-    const locking = pr.locking;
-    if (locking) pr.lock.acquire();
+    if (locking) lock.acquire();
 
     var state: enum { normal, wait_for_specifier } = .normal;
 
@@ -62,13 +65,36 @@ export fn printf(format: [*:0]const u8, ...) void {
         }
     }
 
-    if (locking) pr.lock.release();
+    if (locking) lock.release();
+}
+
+pub fn logFn(
+    comptime level: std.log.Level,
+    comptime scope: @TypeOf(.EnumLiteral),
+    comptime format: []const u8,
+    args: anytype,
+) void {
+    if (locking) lock.acquire();
+
+    const scope_prefix = "(" ++ @tagName(scope) ++ "): ";
+    const prefix = "[" ++
+        switch (level) {
+        .err => color.red,
+        .warn => color.yellow,
+        else => color.green,
+    } ++
+        comptime level.asText() ++
+        color.none ++
+        "] " ++ scope_prefix;
+    print(prefix ++ format ++ "\n", args);
+
+    if (locking) lock.release();
 }
 
 pub fn panicFn(msg: []const u8, _: ?*std.builtin.StackTrace, return_addr: ?usize) noreturn {
     @setCold(true);
-    pr.locking = false;
-    print("\x1b[31m" ++ "KERNEL PANIC: {s}!\n" ++ "\x1b[m", .{msg});
+    locking = false;
+    print(color.red ++ "KERNEL PANIC: {s}!\n" ++ color.none, .{msg});
 
     if (!@import("builtin").strip_debug_info) {
         const first_ret_addr = return_addr orelse @returnAddress();

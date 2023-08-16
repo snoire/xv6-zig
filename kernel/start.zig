@@ -91,3 +91,7 @@ comptime {
 }
 
 pub const os = @import("os.zig");
+pub const std_options = struct {
+    // Define logFn to override the std implementation
+    pub const logFn = @import("print.zig").logFn;
+};
