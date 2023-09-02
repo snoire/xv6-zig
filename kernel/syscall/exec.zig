@@ -87,14 +87,14 @@ pub fn exec(path: [*:0]const u8, argv: [*:null]const ?[*:0]const u8) !c_int {
     p = Proc.myproc().?;
     var oldsz: usize = p.sz;
 
-    // Allocate two pages at the next page boundary.
+    // Allocate sixteen pages at the next page boundary.
     // Make the first inaccessible as a stack guard.
-    // Use the second as the user stack.
+    // Use the rest as the user stack.
     sz = std.mem.alignForward(usize, sz, PGSIZE);
-    var sz1 = pagetable.alloc(sz, sz + 2 * PGSIZE, .{ .writable = true });
+    var sz1 = pagetable.alloc(sz, sz + 16 * PGSIZE, .{ .writable = true });
 
     sz = sz1;
-    pagetable.clear(.{ .addr = sz - 2 * PGSIZE });
+    pagetable.clear(.{ .addr = sz - 16 * PGSIZE });
     var sp = sz;
     var stackbase = sp - PGSIZE;
 

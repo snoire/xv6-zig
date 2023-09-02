@@ -69,14 +69,14 @@ pub fn read() callconv(.C) isize {
     var f = argfile(0);
     var p = syscall.argaddr(1);
     var n = syscall.argint(2);
-    return @intCast(f.read(p, n));
+    return f.read(p, n);
 }
 
 pub fn write() callconv(.C) isize {
     var f = argfile(0);
     var p = syscall.argaddr(1);
     var n = syscall.argint(2);
-    return @intCast(f.write(p, n));
+    return f.write(p, n);
 }
 
 pub fn close() callconv(.C) isize {
@@ -90,7 +90,7 @@ pub fn close() callconv(.C) isize {
 pub fn fstat() callconv(.C) isize {
     var f = argfile(0);
     var st = syscall.argaddr(1);
-    return @intCast(f.stat(st));
+    return f.stat(st);
 }
 
 /// Create the path new as a link to the same inode as old.
@@ -319,7 +319,7 @@ pub fn chdir() callconv(.C) isize {
     var path_buf: [xv6.MAXPATH]u8 = undefined;
     var path = argstr(0, &path_buf);
 
-    var ip = c.namei(path).?;
+    var ip = c.namei(path) orelse return -1;
     ip.ilock();
 
     if (ip.type != .dir) @panic("chdir");

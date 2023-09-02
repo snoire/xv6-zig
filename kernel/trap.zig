@@ -70,7 +70,7 @@ export fn usertrap() void {
         if (which_dev == 0) {
             print(
                 \\usertrap(): unexpected scause {} pid={}
-                \\            sepc={} stval={}
+                \\            sepc=0x{x} stval=0x{x}
                 \\
             , .{ csr.read(.scause), p.pid, csr.read(.sepc), csr.read(.stval) });
 

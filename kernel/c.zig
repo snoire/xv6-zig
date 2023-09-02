@@ -117,10 +117,10 @@ pub const File = extern struct {
 
 // file.c
 pub extern fn filedup(file: *File) *File;
-pub extern fn fileread(file: *File, addr: usize, n: u32) usize;
-pub extern fn filewrite(file: *File, addr: usize, n: u32) usize;
+pub extern fn fileread(file: *File, addr: usize, n: u32) c_int;
+pub extern fn filewrite(file: *File, addr: usize, n: u32) c_int;
 pub extern fn fileclose(file: *File) void;
-pub extern fn filestat(file: *File, addr: usize) usize;
+pub extern fn filestat(file: *File, addr: usize) c_int;
 pub extern fn filealloc() ?*File;
 
 // log.c
