@@ -4,32 +4,32 @@ const proc = @import("../proc.zig");
 const Proc = proc.Proc;
 const trap = @import("../trap.zig");
 
-pub fn exit() callconv(.C) isize {
+pub fn exit() isize {
     proc.exit(@intCast(syscall.arg(0)));
     return 0;
 }
 
-pub fn getpid() callconv(.C) isize {
+pub fn getpid() isize {
     return Proc.myproc().?.pid;
 }
 
-pub fn fork() callconv(.C) isize {
-    return proc.fork() catch |err| @panic(@errorName(err));
+pub fn fork() !isize {
+    return try proc.fork();
 }
 
-pub fn wait() callconv(.C) isize {
+pub fn wait() isize {
     var p: usize = syscall.argaddr(0);
     return proc.wait(p);
 }
 
-pub fn sbrk() callconv(.C) isize {
+pub fn sbrk() isize {
     var n = syscall.argint(0);
     var addr = Proc.myproc().?.sz;
     if (proc.growproc(@intCast(n)) == -1) return -1;
     return @intCast(addr);
 }
 
-pub fn sleep() callconv(.C) isize {
+pub fn sleep() isize {
     var n = syscall.argint(0);
     trap.tickslock.acquire();
     defer trap.tickslock.release();
@@ -43,12 +43,12 @@ pub fn sleep() callconv(.C) isize {
     return 0;
 }
 
-pub fn kill() callconv(.C) isize {
+pub fn kill() usize {
     var pid = syscall.argint(0);
     return @intCast(proc.kill(pid));
 }
 
-pub fn uptime() callconv(.C) isize {
+pub fn uptime() isize {
     trap.tickslock.acquire();
     defer trap.tickslock.release();
 

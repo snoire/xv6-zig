@@ -59,28 +59,28 @@ fn fdalloc(f: *c.File) u32 {
     } else @panic("fdalloc");
 }
 
-pub fn dup() callconv(.C) isize {
+pub fn dup() isize {
     var f = argfile(0);
     var fd = fdalloc(f);
     _ = f.dup();
     return fd;
 }
 
-pub fn read() callconv(.C) isize {
+pub fn read() isize {
     var f = argfile(0);
     var p = syscall.argaddr(1);
     var n = syscall.argint(2);
     return f.read(p, n);
 }
 
-pub fn write() callconv(.C) isize {
+pub fn write() isize {
     var f = argfile(0);
     var p = syscall.argaddr(1);
     var n = syscall.argint(2);
     return f.write(p, n);
 }
 
-pub fn close() callconv(.C) isize {
+pub fn close() isize {
     var fd = syscall.argint(0);
     var f = argfile(0); // user pointer to struct stat
     Proc.myproc().?.ofile[fd] = null;
@@ -88,14 +88,14 @@ pub fn close() callconv(.C) isize {
     return 0;
 }
 
-pub fn fstat() callconv(.C) isize {
+pub fn fstat() isize {
     var f = argfile(0);
     var st = syscall.argaddr(1);
     return f.stat(st);
 }
 
 /// Create the path new as a link to the same inode as old.
-pub fn link() callconv(.C) isize {
+pub fn link() isize {
     var old_buf: [xv6.MAXPATH]u8 = undefined;
     var new_buf: [xv6.MAXPATH]u8 = undefined;
 
@@ -140,7 +140,7 @@ fn isdirempty(dp: *c.Inode) bool {
     }
 }
 
-pub fn unlink() callconv(.C) isize {
+pub fn unlink() isize {
     var path_buf: [xv6.MAXPATH]u8 = undefined;
     var path = argstr(0, &path_buf);
 
@@ -227,7 +227,7 @@ fn create(path: [*:0]const u8, file_type: c.Stat.Type, major: c_short, minor: c_
     return ip;
 }
 
-pub fn open() callconv(.C) isize {
+pub fn open() isize {
     var path_buf: [xv6.MAXPATH]u8 = undefined;
     var path = argstr(0, &path_buf);
 
@@ -277,7 +277,7 @@ pub fn open() callconv(.C) isize {
     return fd;
 }
 
-pub fn mkdir() callconv(.C) isize {
+pub fn mkdir() isize {
     c.begin_op();
     defer c.end_op();
 
@@ -289,7 +289,7 @@ pub fn mkdir() callconv(.C) isize {
     return 0;
 }
 
-pub fn mknod() callconv(.C) isize {
+pub fn mknod() isize {
     c.begin_op();
     defer c.end_op();
 
@@ -304,7 +304,7 @@ pub fn mknod() callconv(.C) isize {
     return 0;
 }
 
-pub fn chdir() callconv(.C) isize {
+pub fn chdir() isize {
     var p = Proc.myproc().?;
 
     c.begin_op();
@@ -324,33 +324,30 @@ pub fn chdir() callconv(.C) isize {
     return 0;
 }
 
-pub fn exec() callconv(.C) isize {
+pub fn exec() !isize {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
-
     const allocator = arena.allocator();
 
+    var list = std.BoundedArray(?[*:0]const u8, xv6.MAXARG){};
     var path_buf: [xv6.MAXPATH]u8 = undefined;
     var path = argstr(0, &path_buf);
 
     var uargv = syscall.argaddr(1);
 
-    var argv: [xv6.MAXARG - 1:null]?[*:0]const u8 = .{null} ** xv6.MAXARG;
-
     for (0..xv6.MAXARG) |i| {
         var uarg = fetchAddr(uargv + i * @sizeOf(usize));
         if (uarg == 0) break;
 
-        argv[i] = @constCast(fetchStr(
-            uarg,
-            allocator.create([128]u8) catch unreachable,
-        ));
+        const arg = fetchStr(uarg, try allocator.create([xv6.MAXPATH]u8));
+        try list.append(arg);
     }
 
-    return execv(path, &argv) catch |err| @panic(@errorName(err));
+    const argv = list.slice();
+    return execv(path, @ptrCast(argv));
 }
 
-pub fn pipe() callconv(.C) isize {
+pub fn pipe() isize {
     var rf: *c.File = undefined;
     var wf: *c.File = undefined;
     if (c.Pipe.alloc(&rf, &wf) < 0) @panic("pipe alloc");

@@ -42,7 +42,7 @@ fn flags2perm(flags: u32) vm.Pte.Flags {
 
 const ELF_PROG_LOAD = 1;
 
-pub fn exec(path: [*:0]const u8, argv: [*:null]const ?[*:0]const u8) !c_int {
+pub fn exec(path: [*:0]const u8, argv: [*:null]const ?[*:0]const u8) !isize {
     var p = Proc.myproc().?;
     c.begin_op();
 
