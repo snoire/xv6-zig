@@ -13,6 +13,18 @@ pub const trap = @import("trap.zig");
 pub const Buffer = @import("fs/Buffer.zig");
 pub const log = @import("fs/log.zig");
 
+pub const SysCall = syscall.SysCall;
+
+pub const O = struct {
+    pub const RDONLY = 0x000;
+    pub const WRONLY = 0x001;
+    pub const RDWR = 0x002;
+    pub const CREATE = 0x200;
+    pub const TRUNC = 0x400;
+    /// unsupported
+    pub const APPEND = 0;
+};
+
 /// maximum number of processes
 pub const NPROC = 64;
 /// maximum number of CPUs

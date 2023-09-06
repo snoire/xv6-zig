@@ -1,17 +1,21 @@
 const std = @import("std");
+const c = @import("c.zig");
+const plic = @import("plic.zig");
+const proc = @import("proc.zig");
+const vm = @import("vm.zig");
 const xv6 = @import("xv6.zig");
+const syscall = @import("syscall.zig").syscall;
 const csr = xv6.register.csr;
 const gpr = xv6.register.gpr;
+const exit = proc.exit;
+const yield = proc.yield;
 const print = xv6.print;
-const proc = @import("proc.zig");
-const Proc = proc.Proc;
-const SpinLock = @import("SpinLock.zig");
 const intrOn = SpinLock.intrOn;
 const intrOff = SpinLock.intrOff;
 const intrGet = SpinLock.intrGet;
-const vm = @import("vm.zig");
-const c = @import("c.zig");
-const plic = @import("plic.zig");
+
+const Proc = proc.Proc;
+const SpinLock = @import("SpinLock.zig");
 
 const TRAMPOLINE = vm.TRAMPOLINE;
 const PGSIZE = proc.PGSIZE;
@@ -19,9 +23,6 @@ const KSTACK_NUM = proc.KSTACK_NUM;
 
 // in kernelvec.S, calls kerneltrap().
 extern fn kernelvec() void;
-extern fn yield() void;
-extern fn syscall() void; // TODO
-extern fn exit(i32) void; // TODO
 
 pub export var ticks: u32 = 0;
 pub export var tickslock: c.SpinLock = undefined;

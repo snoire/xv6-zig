@@ -334,7 +334,7 @@ pub fn fork() !u32 {
 /// Exit the current process.  Does not return.
 /// An exited process remains in the zombie state
 /// until its parent calls wait().
-pub export fn exit(status: i32) void {
+pub fn exit(status: i32) noreturn {
     var p = Proc.myproc().?;
     if (p == initproc) @panic("init exiting");
 
@@ -458,7 +458,7 @@ pub fn scheduler() void {
 /// be proc->intena and proc->noff, but that would
 /// break in the few places where a lock is held but
 /// there's no process.
-export fn sched() void {
+pub fn sched() void {
     var p = Proc.myproc().?;
 
     if (!p.lock.holding()) @panic("sched p->lock");
@@ -472,7 +472,7 @@ export fn sched() void {
 }
 
 /// Give up the CPU for one scheduling round.
-export fn yield() void {
+pub fn yield() void {
     var p = Proc.myproc().?;
     p.lock.acquire();
     defer p.lock.release();

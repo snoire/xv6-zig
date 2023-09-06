@@ -1,34 +1,16 @@
 const std = @import("std");
-const EnumField = std.builtin.Type.EnumField;
+const kernel = @import("kernel");
 const print = std.fmt.comptimePrint;
 
-const syscall = enum(u8) {
-    fork = 1,
-    exit = 2,
-    wait = 3,
-    pipe = 4,
-    read = 5,
-    kill = 6,
-    exec = 7,
-    fstat = 8,
-    chdir = 9,
-    dup = 10,
-    getpid = 11,
-    sbrk = 12,
-    sleep = 13,
-    uptime = 14,
-    open = 15,
-    write = 16,
-    mknod = 17,
-    unlink = 18,
-    link = 19,
-    mkdir = 20,
-    close = 21,
-};
+const EnumField = std.builtin.Type.EnumField;
+const Stat = kernel.Stat;
+const SysCall = kernel.SysCall;
+
+pub const fd_t = i32;
+pub const pid_t = i32;
 
 comptime {
-    const info = @typeInfo(syscall).Enum;
-    for (info.fields) |call| {
+    for (std.meta.fields(SysCall)) |call| {
         asm (entry(call));
     }
 }
@@ -43,16 +25,6 @@ fn entry(comptime call: EnumField) []const u8 {
         \\
     , .{ call.name, call.value });
 }
-
-pub const fd_t = i32;
-pub const pid_t = i32;
-pub const Stat = extern struct {
-    dev: c_int,
-    ino: c_uint,
-    type: c_short,
-    nlink: c_short,
-    size: u64,
-};
 
 pub extern fn fork() c_int;
 pub extern fn getpid() pid_t;

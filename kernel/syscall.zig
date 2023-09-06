@@ -28,7 +28,7 @@ pub fn argaddr(n: u8) usize {
     return arg(n);
 }
 
-pub const SYS = enum(u8) {
+pub const SysCall = enum(u8) {
     fork = 1,
     exit = 2,
     wait = 3,
@@ -60,7 +60,7 @@ const sys = struct {
 /// An array mapping syscall numbers from `SYS`
 /// to the function that handles the system call.
 const syscalls = blk: {
-    const sys_fields = std.meta.fields(SYS);
+    const sys_fields = std.meta.fields(SysCall);
 
     // Note that syscalls[0] doesn't contain any function pointer since syscall starts from 1.
     var sys_calls: [sys_fields.len + 1]*const fn () callconv(.C) isize = undefined;
@@ -71,7 +71,7 @@ const syscalls = blk: {
     break :blk sys_calls;
 };
 
-export fn syscall() void {
+pub fn syscall() void {
     var p: *Proc = Proc.myproc().?;
     var num = p.trapframe.?.a7;
 

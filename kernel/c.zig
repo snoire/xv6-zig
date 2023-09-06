@@ -52,10 +52,10 @@ pub extern fn releasesleep(lock: *SleepLock) void;
 pub extern fn holdingsleep(lock: *SleepLock) bool;
 
 pub const Pipe = extern struct {
-    const PIPESIZE = 512;
+    pub const SIZE = 512;
 
     lock: SpinLock,
-    data: [PIPESIZE]u8,
+    data: [SIZE]u8,
     /// number of bytes read
     nread: c_uint,
     /// number of bytes written

@@ -8,6 +8,7 @@ const target: std.zig.CrossTarget = .{
     .abi = .none,
 };
 
+var kernel_module: *std.Build.Module = undefined;
 var optimize: std.builtin.Mode = undefined;
 var apps_step: *std.build.Step = undefined;
 var strip: ?bool = false;
@@ -139,9 +140,10 @@ pub fn build(b: *std.Build) void {
     });
 
     mkfs.addIncludePath(.{ .path = "./" });
-    mkfs.addAnonymousModule("kernel", .{
+    kernel_module = b.createModule(.{
         .source_file = FileSource.relative("kernel/xv6.zig"),
     });
+    mkfs.addModule("kernel", kernel_module);
 
     mkfs.strip = strip;
     mkfs.single_threaded = true;
@@ -285,6 +287,7 @@ fn buildApp(b: *std.Build, comptime appName: []const u8, comptime lang: enum { c
         .target = target,
         .optimize = optimize,
     });
+    app.addModule("kernel", kernel_module);
 
     if (lang == .c) {
         app.addIncludePath(.{ .path = "./" });

@@ -5,6 +5,7 @@ const syscall = @import("../syscall.zig");
 const proc = @import("../proc.zig");
 const execv = @import("exec.zig").exec;
 const Proc = proc.Proc;
+const O = xv6.O;
 
 /// Fetch the uint64 at addr from the current process.
 fn fetchAddr(addr: usize) usize {
@@ -225,14 +226,6 @@ fn create(path: [*:0]const u8, file_type: c.Stat.Type, major: c_short, minor: c_
     dp.unlockput();
     return ip;
 }
-
-const O = struct {
-    const RDONLY = 0x000;
-    const WRONLY = 0x001;
-    const RDWR = 0x002;
-    const CREATE = 0x200;
-    const TRUNC = 0x400;
-};
 
 pub fn open() callconv(.C) isize {
     var path_buf: [xv6.MAXPATH]u8 = undefined;

@@ -1,26 +1,18 @@
 const std = @import("std");
+const kernel = @import("kernel");
 const sys = @import("usys.zig");
 const lib = @import("ulib.zig");
 const Ast = @import("shell/Ast.zig");
 
-const MAXARG = 32;
-const PIPESIZE = 512;
+const O = kernel.O;
+const MAXARG = kernel.MAXARG;
+const PIPESIZE = kernel.c.Pipe.SIZE;
 
 const color = struct {
     const red = "\x1b[31m";
     const green = "\x1b[32m";
     const yellow = "\x1b[33m";
     const none = "\x1b[m";
-};
-
-const O = struct {
-    const RDONLY = 0x000;
-    const WRONLY = 0x001;
-    const RDWR = 0x002;
-    const CREATE = 0x200;
-    const TRUNC = 0x400;
-    /// unsupported
-    const APPEND = 0;
 };
 
 var buffer: [4096]u8 = undefined;
