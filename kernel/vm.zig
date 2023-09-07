@@ -150,8 +150,11 @@ pub const PageTable = packed union {
         return &pt.ptes.?[va.vir.l0];
     }
 
+    // Look up a virtual address, return the physical address,
+    // or 0 if not mapped.
+    // Can only be used to look up user pages.
     fn cwalkaddr(pagetable: PageTable, va: VirAddr) callconv(.C) usize {
-        const phy_addr = pagetable.walkaddr(va);
+        const phy_addr = pagetable.walkaddr(va) catch return 0;
         return phy_addr.addr - va.vir.offset;
     }
 
@@ -160,13 +163,13 @@ pub const PageTable = packed union {
     }
 
     /// Look up a virtual address, return the physical address,
-    /// or panic if not mapped.
+    /// or error.NotMapped if not mapped.
     /// Can only be used to look up user pages.
-    pub fn walkaddr(pagetable: PageTable, va: VirAddr) PhyAddr {
-        if (va.addr >= VirAddr.MAXVA) @panic("walkaddr");
+    pub fn walkaddr(pagetable: PageTable, va: VirAddr) !PhyAddr {
+        if (va.addr >= VirAddr.MAXVA) return error.NotMapped;
 
-        var pte = pagetable.walk(va, false) catch unreachable;
-        if (!pte.flags.valid or !pte.flags.user) @panic("walkaddr");
+        var pte = pagetable.walk(va, false) catch return error.NotMapped;
+        if (!pte.flags.valid or !pte.flags.user) return error.NotMapped;
 
         return PhyAddr{
             .phy = .{
@@ -238,9 +241,9 @@ pub const PageTable = packed union {
         std.mem.copy(u8, mem.page, src);
     }
 
-    /// Allocate PTEs and physical memory to grow process from oldsz to
-    /// newsz, which need not be page aligned.  Returns new size or panic on error.
-    pub fn alloc(pagetable: PageTable, oldsz: usize, newsz: usize, xperm: Pte.Flags) usize {
+    /// Allocate PTEs and physical memory to grow process from oldsz to newsz,
+    /// which need not be page aligned.  Returns new size or 0 on error.
+    pub fn alloc(pagetable: PageTable, oldsz: usize, newsz: usize, xperm: Pte.Flags) error{OutOfMemory}!usize {
         if (newsz < oldsz) return oldsz;
 
         var flags = xperm;
@@ -249,7 +252,10 @@ pub const PageTable = packed union {
 
         var addr = std.mem.alignForward(usize, oldsz, PGSIZE);
         while (addr < newsz) : (addr += PGSIZE) {
-            var mem = PhyAddr.create() catch |err| @panic(@errorName(err));
+            var mem = PhyAddr.create() catch |err| {
+                _ = pagetable.dealloc(addr, oldsz);
+                return err;
+            };
             pagetable.mappages(.{ .addr = addr }, PGSIZE, mem, flags);
         }
         return newsz;
@@ -260,11 +266,11 @@ pub const PageTable = packed union {
     /// need to be less than oldsz.  oldsz can be larger than the actual
     /// process size.  Returns the new process size.
     pub fn dealloc(pagetable: PageTable, oldsz: usize, newsz: usize) usize {
-        if (newsz < oldsz) return oldsz;
+        if (newsz >= oldsz) return oldsz;
 
         var old = std.mem.alignForward(usize, oldsz, PGSIZE);
         var new = std.mem.alignForward(usize, newsz, PGSIZE);
-        if (old < new) {
+        if (new < old) {
             var npages = (old - new) / PGSIZE;
             pagetable.unmap(.{ .addr = newsz }, npages, true);
         }
@@ -293,6 +299,7 @@ pub const PageTable = packed union {
     /// Free user memory pages,
     /// then free page-table pages.
     pub fn free(pagetable: PageTable, sz: usize) void {
+        std.debug.assert(sz != 0);
         pagetable.unmap(.{ .addr = 0 }, std.mem.alignForward(usize, sz, PGSIZE) / PGSIZE, true);
         freewalk(pagetable);
     }
@@ -330,7 +337,7 @@ pub const PageTable = packed union {
         var dst = dstva;
 
         while (n < length) {
-            var pa = pagetable.walkaddr(dst);
+            var pa = pagetable.walkaddr(dst) catch return -1;
             var nbytes = @min(PGSIZE - (dst.addr - dst.roundDown().addr), length - n);
             std.mem.copy(u8, pa.buffer[0..nbytes], source[n .. n + nbytes]);
 
@@ -349,7 +356,7 @@ pub const PageTable = packed union {
         var src = srcva;
 
         while (n < length) {
-            var pa = pagetable.walkaddr(src);
+            var pa = pagetable.walkaddr(src) catch return -1;
             var nbytes = @min(PGSIZE - (src.addr - src.roundDown().addr), length - n);
             std.mem.copy(u8, dst[n .. n + nbytes], pa.buffer[0..nbytes]);
 
@@ -369,7 +376,7 @@ pub const PageTable = packed union {
         var got_null: bool = false;
 
         while (n < dst.len) {
-            var pa = pagetable.walkaddr(src);
+            var pa = try pagetable.walkaddr(src);
             var nbytes = @min(PGSIZE - (src.addr - src.roundDown().addr), dst.len - n);
             const data = pa.buffer[0..nbytes];
 

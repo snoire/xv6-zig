@@ -3,6 +3,7 @@ const syscall = @import("../syscall.zig");
 const proc = @import("../proc.zig");
 const Proc = proc.Proc;
 const trap = @import("../trap.zig");
+const std = @import("std");
 
 pub fn exit() isize {
     proc.exit(@intCast(syscall.arg(0)));
@@ -22,11 +23,11 @@ pub fn wait() isize {
     return proc.wait(p);
 }
 
-pub fn sbrk() isize {
-    var n = syscall.argint(0);
+pub fn sbrk() usize {
+    var n: isize = @bitCast(syscall.arg(0));
     var addr = Proc.myproc().?.sz;
-    if (proc.growproc(@intCast(n)) == -1) return -1;
-    return @intCast(addr);
+    proc.growproc(n) catch return std.math.maxInt(usize);
+    return addr;
 }
 
 pub fn sleep() isize {

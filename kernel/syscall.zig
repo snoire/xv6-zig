@@ -1,6 +1,7 @@
 const std = @import("std");
 const print = @import("xv6.zig").print;
 const Proc = @import("proc.zig").Proc;
+const log = std.log.scoped(.syscall);
 
 pub fn arg(n: u8) usize {
     var p: *Proc = Proc.myproc().?;
@@ -65,7 +66,10 @@ fn callFn(comptime func: []const u8) SysCallFn {
         pub fn call() usize {
             const info = @typeInfo(FnReturnType);
             const result = if (info == .ErrorUnion)
-                @field(sys, func)() catch |err| @panic(@errorName(err))
+                @field(sys, func)() catch |err| blk: {
+                    log.warn("{s} {s}", .{ func, @errorName(err) });
+                    break :blk -1;
+                }
             else
                 @field(sys, func)();
 

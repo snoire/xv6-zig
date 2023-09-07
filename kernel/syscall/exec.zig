@@ -20,16 +20,15 @@ fn loadseg(
     ip: *c.Inode,
     offset: usize,
     sz: usize,
-) void {
+) !void {
     var i: usize = 0;
     while (i < sz) : (i += vm.PGSIZE) {
-        var pa = pagetable.walkaddr(.{ .addr = va.addr + i });
-        if (pa.addr == 0)
-            @panic("loadseg: address should exist");
+        var pa = try pagetable.walkaddr(.{ .addr = va.addr + i });
+        if (pa.addr == 0) return error.LoadSeg;
 
         var n = @min(sz - i, vm.PGSIZE);
         if (ip.read(false, pa.addr, offset + i, n) != n)
-            @panic("loadseg_error");
+            return error.LoadSeg;
     }
 }
 
@@ -43,46 +42,49 @@ fn flags2perm(flags: u32) vm.Pte.Flags {
 const ELF_PROG_LOAD = 1;
 
 pub fn exec(path: [*:0]const u8, argv: [*:null]const ?[*:0]const u8) !isize {
-    var p = Proc.myproc().?;
-    c.begin_op();
-
-    var ip = c.namei(path) orelse {
-        c.end_op();
-        return -1;
-    };
-    ip.ilock();
-
-    // Check ELF header
+    var sz: usize = 0;
     var elf: ElfHdr = undefined;
-    if (ip.read(false, @intFromPtr(&elf), 0, @sizeOf(ElfHdr)) != @sizeOf(ElfHdr))
-        @panic("BadElf");
-
-    if (!std.mem.eql(u8, elf.e_ident[0..4], std.elf.MAGIC))
-        @panic("InvalidElfMagic");
+    var p = Proc.myproc().?;
 
     var pagetable = try p.createPagetable();
-
-    // Load program into memory.
-    var sz: usize = 0;
-    var off = elf.e_phoff;
-    for (0..elf.e_phnum) |_| {
-        var ph: ProgHdr = undefined;
-        if (ip.read(false, @intFromPtr(&ph), off, @sizeOf(ProgHdr)) != @sizeOf(ProgHdr))
-            @panic("BadProgHdr");
-
-        if (ph.p_type != ELF_PROG_LOAD) @panic("p_type");
-        if (ph.p_memsz < ph.p_filesz) @panic("p_memsz");
-        if (ph.p_vaddr + ph.p_memsz < ph.p_vaddr) @panic("p_vaddr");
-        if (!std.mem.isAligned(ph.p_vaddr, kalloc.PGSIZE)) @panic("not aligned");
-
-        sz = pagetable.alloc(sz, ph.p_vaddr + ph.p_memsz, flags2perm(ph.p_flags));
-
-        loadseg(pagetable, .{ .addr = ph.p_vaddr }, ip, ph.p_offset, ph.p_filesz);
-        off += @sizeOf(ProgHdr);
+    errdefer {
+        if (sz != 0) pagetable.free(sz);
     }
 
-    ip.unlockput();
-    c.end_op();
+    {
+        c.begin_op();
+        defer c.end_op();
+
+        var ip = c.namei(path) orelse return error.InvalidPath;
+
+        ip.ilock();
+        defer ip.unlockput();
+
+        // Check ELF header
+        if (ip.read(false, @intFromPtr(&elf), 0, @sizeOf(ElfHdr)) != @sizeOf(ElfHdr))
+            return error.BadElf;
+
+        if (!std.mem.eql(u8, elf.e_ident[0..4], std.elf.MAGIC))
+            return error.InvalidElfMagic;
+
+        // Load program into memory.
+        var off = elf.e_phoff;
+        for (0..elf.e_phnum) |_| {
+            var ph: ProgHdr = undefined;
+            if (ip.read(false, @intFromPtr(&ph), off, @sizeOf(ProgHdr)) != @sizeOf(ProgHdr))
+                return error.BadProgHdr;
+
+            if (ph.p_type != ELF_PROG_LOAD) return error.p_type;
+            if (ph.p_memsz < ph.p_filesz) return error.p_memsz;
+            if (ph.p_vaddr + ph.p_memsz < ph.p_vaddr) return error.p_vaddr;
+            if (!std.mem.isAligned(ph.p_vaddr, kalloc.PGSIZE)) return error.NotAligned;
+
+            sz = try pagetable.alloc(sz, ph.p_vaddr + ph.p_memsz, flags2perm(ph.p_flags));
+
+            try loadseg(pagetable, .{ .addr = ph.p_vaddr }, ip, ph.p_offset, ph.p_filesz);
+            off += @sizeOf(ProgHdr);
+        }
+    }
 
     p = Proc.myproc().?;
     var oldsz: usize = p.sz;
@@ -91,7 +93,7 @@ pub fn exec(path: [*:0]const u8, argv: [*:null]const ?[*:0]const u8) !isize {
     // Make the first inaccessible as a stack guard.
     // Use the rest as the user stack.
     sz = std.mem.alignForward(usize, sz, PGSIZE);
-    var sz1 = pagetable.alloc(sz, sz + 16 * PGSIZE, .{ .writable = true });
+    var sz1 = try pagetable.alloc(sz, sz + 16 * PGSIZE, .{ .writable = true });
 
     sz = sz1;
     pagetable.clear(.{ .addr = sz - 16 * PGSIZE });
@@ -105,9 +107,9 @@ pub fn exec(path: [*:0]const u8, argv: [*:null]const ?[*:0]const u8) !isize {
     for (args, ustack[0..args.len]) |*arg, *stack| {
         sp -= std.mem.len(arg.*.?) + 1;
         sp -= sp % 16; // riscv sp must be 16-byte aligned
-        if (sp < stackbase) @panic("sp < stackbase");
+        if (sp < stackbase) return error.stackbase;
         if (pagetable.copyout(.{ .addr = sp }, arg.*.?, std.mem.len(arg.*.?) + 1) < 0)
-            @panic("copyout");
+            return error.copyout;
         stack.* = sp;
     }
 
@@ -117,9 +119,9 @@ pub fn exec(path: [*:0]const u8, argv: [*:null]const ?[*:0]const u8) !isize {
     sp -= (args.len + 1) * @sizeOf(usize);
     sp -= sp % 16;
 
-    if (sp < stackbase) @panic("sp < stackbase");
+    if (sp < stackbase) return error.stackbase;
     if (pagetable.copyout(.{ .addr = sp }, @ptrCast(&ustack), (args.len + 1) * @sizeOf(usize)) < 0)
-        @panic("copyout");
+        return error.copyout;
 
     // arguments to user main(argc, argv)
     // argc is returned via the system call return
@@ -141,5 +143,6 @@ pub fn exec(path: [*:0]const u8, argv: [*:null]const ?[*:0]const u8) !isize {
     p.trapframe.?.sp = sp;
     oldpagetable.freepagetable(oldsz);
 
-    return @as(c_int, @intCast(args.len));
+    const nargs: isize = @intCast(args.len);
+    return nargs;
 }

@@ -270,21 +270,19 @@ pub fn userinit() void {
 
 /// Grow or shrink user memory by n bytes.
 /// Return 0 on success, -1 on failure.
-pub fn growproc(n: i32) c_int {
+pub fn growproc(n: isize) !void {
     var p = Proc.myproc().?;
     var sz = p.sz;
 
     if (n > 0) {
-        sz = p.pagetable.alloc(sz, sz + @as(usize, @intCast(n)), .{
+        sz = try p.pagetable.alloc(sz, sz + @as(usize, @intCast(n)), .{
             .writable = true,
         });
-        if (sz < 0) @panic("growproc");
-    } else {
-        sz = p.pagetable.dealloc(sz, sz + @as(usize, @intCast(n)));
+    } else if (n < 0) {
+        sz = p.pagetable.dealloc(sz, sz - @as(usize, @intCast(-n)));
     }
 
     p.sz = sz;
-    return 0;
 }
 
 // Create a new process, copying the parent.

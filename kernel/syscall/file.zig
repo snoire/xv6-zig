@@ -21,15 +21,15 @@ fn fetchAddr(addr: usize) usize {
 
 /// Fetch the nul-terminated string at addr from the current process.
 /// Returns length of string, not including nul, or -1 for error.
-fn fetchStr(addr: usize, buf: []u8) [:0]const u8 {
+fn fetchStr(addr: usize, buf: []u8) ![:0]const u8 {
     var p: *Proc = Proc.myproc().?;
-    return p.pagetable.copyinstr(buf, .{ .addr = addr }) catch unreachable;
+    return p.pagetable.copyinstr(buf, .{ .addr = addr });
 }
 
 /// Fetch the nth word-sized system call argument as a null-terminated string.
 /// Copies into buf, at most max.
 /// Returns string length if OK (including nul), panic if error.
-fn argstr(n: u8, buf: []u8) [:0]const u8 {
+fn argstr(n: u8, buf: []u8) ![:0]const u8 {
     var addr = syscall.argaddr(n);
     return fetchStr(addr, buf);
 }
@@ -95,12 +95,12 @@ pub fn fstat() isize {
 }
 
 /// Create the path new as a link to the same inode as old.
-pub fn link() isize {
+pub fn link() !isize {
     var old_buf: [xv6.MAXPATH]u8 = undefined;
     var new_buf: [xv6.MAXPATH]u8 = undefined;
 
-    var old = argstr(0, &old_buf);
-    var new = argstr(1, &new_buf);
+    var old = try argstr(0, &old_buf);
+    var new = try argstr(1, &new_buf);
 
     c.begin_op();
     defer c.end_op();
@@ -140,9 +140,9 @@ fn isdirempty(dp: *c.Inode) bool {
     }
 }
 
-pub fn unlink() isize {
+pub fn unlink() !isize {
     var path_buf: [xv6.MAXPATH]u8 = undefined;
-    var path = argstr(0, &path_buf);
+    var path = try argstr(0, &path_buf);
 
     c.begin_op();
     defer c.end_op();
@@ -150,21 +150,23 @@ pub fn unlink() isize {
     var name: [c.Dirent.DIRSIZ]u8 = undefined;
     var dp = c.nameiparent(path, &name).?;
     dp.ilock();
+    defer dp.unlockput();
 
     if (std.mem.eql(u8, &name, ".") or std.mem.eql(u8, &name, "..")) {
-        @panic("Cannot unlink `.` or `..`");
+        return error.Invalid;
     }
 
     var off: u32 = undefined;
-    var ip = dp.dirlookup(&name, &off).?;
+    var ip = dp.dirlookup(&name, &off) orelse return error.NotFound;
     ip.ilock();
+    defer ip.unlockput();
 
     if (ip.nlink < 1) {
         @panic("unlink: nlink < 1");
     }
 
     if (ip.type == .dir and !isdirempty(ip)) {
-        @panic("ip.type == .dir and !isdirempty(ip)");
+        return error.DirIsNotEmpty;
     }
 
     var de = std.mem.zeroes(c.Dirent);
@@ -178,11 +180,9 @@ pub fn unlink() isize {
         dp.nlink -= 1;
         dp.update();
     }
-    dp.unlockput();
 
     ip.nlink -= 1;
     ip.update();
-    ip.unlockput();
 
     return 0;
 }
@@ -227,9 +227,9 @@ fn create(path: [*:0]const u8, file_type: c.Stat.Type, major: c_short, minor: c_
     return ip;
 }
 
-pub fn open() isize {
+pub fn open() !isize {
     var path_buf: [xv6.MAXPATH]u8 = undefined;
-    var path = argstr(0, &path_buf);
+    var path = try argstr(0, &path_buf);
 
     var omode = syscall.argint(1);
 
@@ -238,23 +238,24 @@ pub fn open() isize {
 
     var ip: *c.Inode = undefined;
     if (omode & O.CREATE != 0) {
-        ip = create(path, .file, 0, 0).?;
+        ip = create(path, .file, 0, 0) orelse return -1;
     } else {
-        ip = c.namei(path) orelse {
-            return -1;
-        };
+        ip = c.namei(path) orelse return -1;
+
         ip.ilock();
+        errdefer ip.unlockput();
 
         if (ip.type == .dir and omode != O.RDONLY) {
-            @panic("ip.type == .dir and omode != O.RDONLY");
+            return error.Invalid;
         }
     }
+    errdefer ip.unlockput();
 
     if (ip.type == .device and (ip.major < 0 or ip.major >= xv6.NDEV)) {
-        @panic("ip.type == .device and (ip.major < 0 or ip.major >= xv6.NDEV)");
+        return error.Invalid;
     }
 
-    var f = c.File.alloc().?;
+    var f = c.File.alloc() orelse return error.Failed;
     var fd = fdalloc(f);
 
     if (ip.type == .device) {
@@ -277,24 +278,24 @@ pub fn open() isize {
     return fd;
 }
 
-pub fn mkdir() isize {
+pub fn mkdir() !isize {
     c.begin_op();
     defer c.end_op();
 
     var path_buf: [xv6.MAXPATH]u8 = undefined;
-    var path = argstr(0, &path_buf);
+    var path = try argstr(0, &path_buf);
 
     var ip = create(path, .dir, 0, 0).?;
     ip.unlockput();
     return 0;
 }
 
-pub fn mknod() isize {
+pub fn mknod() !isize {
     c.begin_op();
     defer c.end_op();
 
     var path_buf: [xv6.MAXPATH]u8 = undefined;
-    var path = argstr(0, &path_buf);
+    var path = try argstr(0, &path_buf);
 
     var major: c_short = @intCast(syscall.argint(1));
     var minor: c_short = @intCast(syscall.argint(2));
@@ -304,13 +305,13 @@ pub fn mknod() isize {
     return 0;
 }
 
-pub fn chdir() isize {
+pub fn chdir() !isize {
     var p = Proc.myproc().?;
 
     c.begin_op();
 
     var path_buf: [xv6.MAXPATH]u8 = undefined;
-    var path = argstr(0, &path_buf);
+    var path = try argstr(0, &path_buf);
 
     var ip = c.namei(path) orelse return -1;
     ip.ilock();
@@ -331,7 +332,7 @@ pub fn exec() !isize {
 
     var list = std.BoundedArray(?[*:0]const u8, xv6.MAXARG){};
     var path_buf: [xv6.MAXPATH]u8 = undefined;
-    var path = argstr(0, &path_buf);
+    var path = try argstr(0, &path_buf);
 
     var uargv = syscall.argaddr(1);
 
@@ -339,12 +340,12 @@ pub fn exec() !isize {
         var uarg = fetchAddr(uargv + i * @sizeOf(usize));
         if (uarg == 0) break;
 
-        const arg = fetchStr(uarg, try allocator.create([xv6.MAXPATH]u8));
+        const arg = try fetchStr(uarg, try allocator.create([xv6.MAXPATH]u8));
         try list.append(arg);
     }
 
     const argv = list.slice();
-    return execv(path, @ptrCast(argv));
+    return execv(path, @ptrCast(argv)) catch -1;
 }
 
 pub fn pipe() isize {
