@@ -54,14 +54,13 @@ fn alloc(_: *anyopaque, n: usize, log2_align: u8, ra: usize) ?[*]u8 {
     defer lock.release();
 
     // ?previous -> target -> ?next
-    var previous: ?*align(PGSIZE) Run = null;
-
     // target points to a node with enough pages
-    const target = blk: {
+    const previous, const target = blk: {
+        var prev: ?*align(PGSIZE) Run = null;
         var it = freelist;
         break :blk while (it) |node| : (it = node.next) {
-            if (node.len >= npages) break node;
-            previous = node;
+            if (node.len >= npages) break .{ prev, node };
+            prev = node;
         } else return null;
     };
 

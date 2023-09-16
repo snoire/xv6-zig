@@ -102,24 +102,27 @@ fn runcmd(ast: Ast, index: Ast.Node.Index) !void {
             const extra = ast.extraData(node.data.rhs, Ast.Node.Redirection);
             const FdList = std.ArrayList(c_int);
 
-            var fd_list: [3]?FdList = undefined;
-            var stdio_pipe: [3]?[2]c_int = undefined;
+            const stdio_pipe, var fd_list = blk: {
+                var pipes: [3]?[2]c_int = undefined;
+                var fds: [3]?FdList = undefined;
 
-            for (&stdio_pipe, &fd_list, [3]bool{
-                extra.stdin != 0,
-                extra.stdout != 0 or extra.stdout_append != 0 or node.tag == .redir_pipe,
-                extra.stderr != 0 or extra.stderr_append != 0,
-            }) |*pipe, *list, exist| {
-                pipe.* = if (exist) blk: {
-                    var p: [2]c_int = undefined;
-                    _ = sys.pipe(&p);
-                    break :blk p;
-                } else null;
+                for (0..3, [3]bool{
+                    extra.stdin != 0,
+                    extra.stdout != 0 or extra.stdout_append != 0 or node.tag == .redir_pipe,
+                    extra.stderr != 0 or extra.stderr_append != 0,
+                }) |i, exist| {
+                    if (exist) {
+                        _ = sys.pipe(&pipes[i].?);
+                        fds[i] = FdList.init(allocator);
+                    } else {
+                        pipes[i] = null;
+                        fds[i] = null;
+                    }
+                }
 
-                list.* = if (exist) FdList.init(allocator) else null;
-            }
-
-            if (node.tag == .redir_pipe) try fd_list[1].?.append(1);
+                if (node.tag == .redir_pipe) try fds[1].?.append(1);
+                break :blk .{ pipes, fds };
+            };
 
             if (fork() == 0) {
                 for (stdio_pipe, 0.., [3]usize{ 0, 1, 1 }) |pipe, stdio, pipe_i| {
