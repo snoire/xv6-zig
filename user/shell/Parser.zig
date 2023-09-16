@@ -26,7 +26,7 @@ scratch: std.ArrayListUnmanaged(Node.Index),
 /// redirection → command (("<" | ">" | ">>" | "2>" | "2>>") file)*
 /// command     → string+ | "(" commandline ")"
 pub fn parseRoot(p: *Parser) !void {
-    assert(p.token_tags.len > 0);
+    assert(p.token_tags.len > 1);
     // Root node must be index 0.
     p.nodes.appendAssumeCapacity(.{
         .tag = .list,
@@ -44,9 +44,9 @@ pub fn parseRoot(p: *Parser) !void {
 }
 
 pub fn deinit(p: *Parser) void {
-    defer p.nodes.deinit(p.gpa);
-    defer p.extra_data.deinit(p.gpa);
-    defer p.scratch.deinit(p.gpa);
+    p.nodes.deinit(p.gpa);
+    p.extra_data.deinit(p.gpa);
+    p.scratch.deinit(p.gpa);
 }
 
 fn parseCmdLine(p: *Parser) !Node.Index {

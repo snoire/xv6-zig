@@ -85,8 +85,8 @@ pub const Node = struct {
 
 /// Result should be freed with tree.deinit() when there are
 /// no more references to any of the tokens or nodes.
-pub fn parse(gpa: Allocator, source: [:0]const u8) Allocator.Error!Ast {
-    assert(source.len != 0);
+pub fn parse(gpa: Allocator, source: [:0]const u8) Allocator.Error!?Ast {
+    if (source.len == 0) return null;
 
     var ast = Ast{
         .source = source,
@@ -112,6 +112,8 @@ pub fn parse(gpa: Allocator, source: [:0]const u8) Allocator.Error!Ast {
         try tokens.append(gpa, token);
         if (token.tag == .eof) break;
     }
+
+    if (tokens.len <= 1) return null;
 
     var parser: Parser = .{
         .source = source,
@@ -250,7 +252,7 @@ pub fn extraData(tree: Ast, index: usize, comptime T: type) T {
 
 fn testParse(source: [:0]const u8, expected: []const u8) !void {
     const allocator = std.testing.allocator;
-    var tree = try parse(allocator, source);
+    var tree = try parse(allocator, source) orelse return;
     defer tree.deinit(allocator);
 
     assert(tree.error_token == null);
@@ -265,7 +267,7 @@ fn testParse(source: [:0]const u8, expected: []const u8) !void {
 
 fn testError(source: [:0]const u8) !void {
     const allocator = std.testing.allocator;
-    var tree = try parse(allocator, source);
+    var tree = try parse(allocator, source) orelse unreachable;
     defer tree.deinit(allocator);
 
     assert(tree.error_token != null);
@@ -303,6 +305,10 @@ test "parse" {
     try testParse(
         "cd cd",
         "cd cd",
+    );
+    try testParse(
+        "   ",
+        "",
     );
 }
 

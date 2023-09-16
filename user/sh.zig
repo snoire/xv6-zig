@@ -39,9 +39,7 @@ fn run() !void {
     fba.reset();
 
     const cmd = try getcmd();
-    if (cmd.len == 0) return;
-
-    var tree = try Ast.parse(allocator, cmd);
+    var tree = try Ast.parse(allocator, cmd) orelse return;
     defer tree.deinit(allocator);
 
     if (tree.error_token != null) {
@@ -59,7 +57,7 @@ fn getcmd() ![:0]u8 {
     print(color.yellow ++ "$ " ++ color.none, .{});
 
     var buf = try allocator.alloc(u8, 256);
-    const cmd = (try lib.gets(buf)) orelse unreachable;
+    const cmd = try lib.gets(buf) orelse unreachable;
     buf[cmd.len] = 0; // chop \n
     return buf[0..cmd.len :0];
 }
@@ -243,16 +241,10 @@ fn print(comptime format: []const u8, args: anytype) void {
 }
 
 fn parseError(tree: Ast) void {
-    const stderr = lib.getStdErr();
     const error_token = tree.error_token.?;
-
     const position = @intFromPtr(error_token.ptr) - @intFromPtr(tree.source.ptr);
-    try stderr.writeByteNTimes(' ', position + 2);
-
-    const width = error_token.len;
-    try stderr.writeByte('^');
-    try stderr.writeByteNTimes('~', width - 1);
-    try stderr.print("\nsh: parse error near `{s}'\n", .{error_token});
+    print("{s:[2]}{s:~<[3]}\n", .{ "", "^", position + 2, error_token.len });
+    print("sh: parse error near `{s}'\n", .{error_token});
 }
 
 pub fn panic(msg: []const u8, _: ?*std.builtin.StackTrace, ret_addr: ?usize) noreturn {
