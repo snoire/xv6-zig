@@ -74,7 +74,7 @@ pub fn exec(path: [*:0]const u8, argv: [*:null]const ?[*:0]const u8) !isize {
             if (ip.read(false, @intFromPtr(&ph), off, @sizeOf(ProgHdr)) != @sizeOf(ProgHdr))
                 return error.BadProgHdr;
 
-            if (ph.p_type != ELF_PROG_LOAD) return error.p_type;
+            if (ph.p_type != ELF_PROG_LOAD) continue;
             if (ph.p_memsz < ph.p_filesz) return error.p_memsz;
             if (ph.p_vaddr + ph.p_memsz < ph.p_vaddr) return error.p_vaddr;
             if (!std.mem.isAligned(ph.p_vaddr, kalloc.PGSIZE)) return error.NotAligned;
