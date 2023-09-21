@@ -3,6 +3,7 @@ const kernel = @import("kernel");
 const sys = @import("usys.zig");
 const lib = @import("ulib.zig");
 const Ast = @import("shell/Ast.zig");
+const print = lib.print;
 
 const O = kernel.O;
 const MAXARG = kernel.MAXARG;
@@ -17,7 +18,7 @@ const color = struct {
 
 var buffer: [4096]u8 = undefined;
 var fba = std.heap.FixedBufferAllocator.init(&buffer);
-var allocator = fba.allocator();
+const allocator = fba.allocator();
 
 export fn main() noreturn {
     // Ensure that three file descriptors are open.
@@ -128,6 +129,7 @@ fn runcmd(ast: Ast, index: Ast.Node.Index) !void {
                 break :blk .{ pipes, fds };
             };
 
+            // fork a new process to run the command
             if (fork() == 0) {
                 for (stdio_pipe, 0.., [3]usize{ 0, 1, 1 }) |pipe, stdio, pipe_i| {
                     if (pipe) |p| {
@@ -140,10 +142,7 @@ fn runcmd(ast: Ast, index: Ast.Node.Index) !void {
                 try runcmd(ast, node.data.lhs);
             }
 
-            if (stdio_pipe[0]) |stdin| _ = sys.close(stdin[0]);
-            if (stdio_pipe[1]) |stdout| _ = sys.close(stdout[1]);
-            if (stdio_pipe[2]) |stderr| _ = sys.close(stderr[1]);
-
+            // open input/output files
             inline for (
                 std.meta.fields(Ast.Node.Redirection),
                 .{
@@ -159,55 +158,59 @@ fn runcmd(ast: Ast, index: Ast.Node.Index) !void {
                 if (field_index != 0) {
                     const field_node = ast.nodes.get(field_index);
                     const files = ast.extra_data[field_node.data.lhs..field_node.data.rhs];
+                    const tokens = ast.tokens.items(.lexeme);
 
-                    // open these files
                     for (files) |file| {
-                        const path = try allocator.dupeZ(u8, ast.tokens.items(.lexeme)[file]);
+                        const path = try allocator.dupeZ(u8, tokens[file]);
                         defer allocator.free(path);
                         try fd_list[i].?.append(sys.open(path, mode));
                     }
                 }
             }
 
-            var buf = try allocator.alloc(u8, PIPESIZE);
+            // pipe data between child and input/output files
+            {
+                var buf = try allocator.alloc(u8, PIPESIZE);
+                defer allocator.free(buf);
 
-            // write to stdin
-            if (stdio_pipe[0]) |p| {
-                for (fd_list[0].?.items) |fd| {
-                    while (true) {
-                        const nbytes = sys.read(fd, buf.ptr, PIPESIZE);
-                        if (nbytes <= 0) break;
-                        _ = sys.write(p[1], buf.ptr, @intCast(nbytes));
-                    }
-                }
-            }
+                // read from input files and write to child stdin pipe
+                if (stdio_pipe[0]) |p| {
+                    _ = sys.close(p[0]);
+                    defer _ = sys.close(p[1]);
 
-            // read from stdout and stderr
-            for (stdio_pipe[1..], fd_list[1..]) |pipe, list| {
-                if (pipe) |p| {
-                    const fds = list.?.items;
-                    while (true) {
-                        const nbytes = sys.read(p[0], buf.ptr, PIPESIZE);
-                        if (nbytes <= 0) break;
-
-                        for (fds) |fd| {
-                            _ = sys.write(fd, buf.ptr, @intCast(nbytes));
+                    for (fd_list[0].?.items) |fd| {
+                        while (true) {
+                            const nbytes = sys.read(fd, buf.ptr, PIPESIZE);
+                            if (nbytes <= 0) break;
+                            _ = sys.write(p[1], buf.ptr, @intCast(nbytes));
                         }
                     }
                 }
-            }
 
-            allocator.free(buf);
+                // read from child stdout/stderr pipes and write to output files
+                for (stdio_pipe[1..], fd_list[1..]) |pipe, list| {
+                    if (pipe) |p| {
+                        _ = sys.close(p[1]);
+                        defer _ = sys.close(p[0]);
 
-            for (fd_list) |list| {
-                if (list) |l| l.deinit();
+                        const fds = list.?.items;
+                        while (true) {
+                            const nbytes = sys.read(p[0], buf.ptr, PIPESIZE);
+                            if (nbytes <= 0) break;
+
+                            for (fds) |fd| {
+                                _ = sys.write(fd, buf.ptr, @intCast(nbytes));
+                            }
+                        }
+                    }
+                }
             }
 
             _ = sys.wait(null);
             sys.exit(0);
         },
         .exec => {
-            var list = try std.BoundedArray(?[*:0]const u8, MAXARG).init(0);
+            var list = std.BoundedArray(?[*:0]const u8, MAXARG){};
 
             const tokens = ast.tokens.items(.lexeme)[node.data.lhs..node.data.rhs];
             for (tokens) |token| {
@@ -240,11 +243,6 @@ fn fork() sys.pid_t {
     const pid = sys.fork();
     if (pid == -1) @panic("fork");
     return pid;
-}
-
-fn print(comptime format: []const u8, args: anytype) void {
-    const stderr = lib.getStdErr();
-    stderr.print(format, args) catch {};
 }
 
 fn parseError(tree: Ast) void {
