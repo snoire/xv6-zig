@@ -112,7 +112,11 @@ fn runcmd(ast: Ast, index: Ast.Node.Index) !void {
                     extra.stderr != 0 or extra.stderr_append != 0,
                 }) |i, exist| {
                     if (exist) {
-                        _ = sys.pipe(&pipes[i].?);
+                        pipes[i] = pipe: {
+                            var p: [2]c_int = undefined;
+                            _ = sys.pipe(&p);
+                            break :pipe p;
+                        };
                         fds[i] = FdList.init(allocator);
                     } else {
                         pipes[i] = null;
