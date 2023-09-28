@@ -16,9 +16,8 @@ const color = struct {
     const none = "\x1b[m";
 };
 
-var buffer: [4096]u8 = undefined;
-var fba = std.heap.FixedBufferAllocator.init(&buffer);
-const allocator = fba.allocator();
+var arena_allocator = std.heap.ArenaAllocator.init(lib.heap.raw_c_allocator);
+const allocator = arena_allocator.allocator();
 
 export fn main() noreturn {
     // Ensure that three file descriptors are open.
@@ -37,7 +36,7 @@ export fn main() noreturn {
 }
 
 fn run() !void {
-    fba.reset();
+    _ = arena_allocator.reset(.retain_capacity);
 
     const cmd = try getcmd();
     var tree = try Ast.parse(allocator, cmd) orelse return;

@@ -41,6 +41,10 @@ const zapps = .{
     "sh",
 };
 
+const apps_linking_c = std.ComptimeStringMap(void, .{
+    .{"sh"},
+});
+
 const kfiles = .{
     "swtch.S",
     "trampoline.S",
@@ -204,19 +208,17 @@ pub fn build(b: *std.Build) void {
     // run xv6 in qemu
     const kernel_path = b.pathJoin(&.{ b.install_prefix, "kernel" });
     const qemu_cmd = "qemu-system-riscv64";
-    const qemu_args = [_][]const u8{ // zig fmt: off
-        "-machine",     "virt",
-        "-bios",        "none",
-        //"-cpu", "rv64,pmp=false", // can't start?
-        "-kernel",      kernel_path,
-        "-m",           "128M",
-        "-smp",         cpus,
+    const qemu_args = [_][]const u8{
+        "-machine",   "virt",
+        "-bios",      "none",
+        "-kernel",    kernel_path,
+        "-m",         "128M",
+        "-smp",       cpus,
+        "-global",    "virtio-mmio.force-legacy=false",
+        "-drive",     b.fmt("file={s},if=none,format=raw,id=x0", .{fs_img_path}),
+        "-device",    "virtio-blk-device,drive=x0,bus=virtio-mmio-bus.0",
         "-nographic",
-        "-global",      "virtio-mmio.force-legacy=false",
-        "-drive",       b.fmt("file={s},if=none,format=raw,id=x0", .{fs_img_path}),
-        "-device",      "virtio-blk-device,drive=x0,bus=virtio-mmio-bus.0",
-        // TODO: netdev?
-    }; // zig fmt: on
+    };
 
     const run_tls = b.step("run", "Run xv6 in QEMU");
     const run = b.addSystemCommand(&.{qemu_cmd});
@@ -238,25 +240,14 @@ pub fn build(b: *std.Build) void {
 
     // debug with gdb
     const gdb_tls = b.step("gdb", "Debug with gdb");
-    const gdb = b.addSystemCommand(&.{
-        "riscv64-unknown-elf-gdb",
-        kernel_path,
-        "-q",
-        "-n",
-        "-x",
-        "gdbinit",
-    });
+    const gdb = b.addSystemCommand(&.{ "riscv64-unknown-elf-gdb", kernel_path, "-q", "-n", "-x", "gdbinit" });
 
     gdb.step.dependOn(&install_kernel.step);
     gdb_tls.dependOn(&gdb.step);
 
     // display code information
     const objdump_tls = b.step("code", "Display code information");
-    const objdump = b.addSystemCommand(&.{
-        "riscv64-unknown-elf-objdump",
-        "-SD",
-        kernel_path,
-    });
+    const objdump = b.addSystemCommand(&.{ "riscv64-unknown-elf-objdump", "-SD", kernel_path });
 
     objdump.step.dependOn(&install_kernel.step);
     objdump_tls.dependOn(&objdump.step);
@@ -299,11 +290,13 @@ fn buildApp(b: *std.Build, comptime appName: []const u8, comptime lang: enum { c
             "user/umalloc.c",
         }, &.{});
     } else {
-        app.addIncludePath(.{ .path = "./" });
-        app.addCSourceFile(.{
-            .file = .{ .path = "user/umalloc.c" },
-            .flags = &.{},
-        });
+        if (apps_linking_c.has(appName)) {
+            app.addIncludePath(.{ .path = "./" });
+            app.addCSourceFile(.{
+                .file = .{ .path = "user/umalloc.c" },
+                .flags = &.{},
+            });
+        }
     }
 
     app.strip = strip;

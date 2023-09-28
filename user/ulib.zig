@@ -1,5 +1,6 @@
 const std = @import("std");
 const sys = @import("usys.zig");
+pub const heap = @import("heap.zig");
 
 pub const Reader = std.io.Reader(sys.fd_t, error{}, read);
 

@@ -1,7 +1,7 @@
 const std = @import("std");
 const assert = std.debug.assert;
 const mem = std.mem;
-const Allocator = std.mem.Allocator;
+const Allocator = mem.Allocator;
 
 // umalloc.c
 const c = struct {
@@ -23,76 +23,63 @@ const c_allocator_vtable = Allocator.VTable{
 };
 
 // this is basically just a copy of the standard CAllocator
-pub const CAllocator = struct {
+const CAllocator = struct {
     fn alloc(
         _: *anyopaque,
         len: usize,
-        alignment: u29,
-        len_align: u29,
+        log2_align: u8,
         return_address: usize,
-    ) error{OutOfMemory}![]u8 {
+    ) ?[*]u8 {
         _ = return_address;
         assert(len > 0);
-        assert(std.math.isPowerOfTwo(alignment));
-
-        var ptr = alignedAlloc(len, alignment) orelse return error.OutOfMemory;
-        if (len_align == 0) {
-            return ptr[0..len];
-        }
-
-        const full_len = init: {
-            const s = alignedAllocSize(ptr);
-            assert(s >= len);
-            break :init s;
-        };
-
-        return ptr[0..mem.alignBackwardAnyAlign(full_len, len_align)];
+        return alignedAlloc(len, log2_align);
     }
 
     fn resize(
         _: *anyopaque,
         buf: []u8,
-        buf_align: u29,
+        log2_buf_align: u8,
         new_len: usize,
-        len_align: u29,
         return_address: usize,
-    ) ?usize {
-        _ = buf_align;
+    ) bool {
+        _ = log2_buf_align;
         _ = return_address;
         if (new_len <= buf.len) {
-            return mem.alignAllocLen(buf.len, new_len, len_align);
+            return true;
         }
 
         const full_len = alignedAllocSize(buf.ptr);
         if (new_len <= full_len) {
-            return mem.alignAllocLen(full_len, new_len, len_align);
+            return true;
         }
 
-        return null;
+        return false;
     }
 
     fn free(
         _: *anyopaque,
         buf: []u8,
-        buf_align: u29,
+        log2_buf_align: u8,
         return_address: usize,
     ) void {
-        _ = buf_align;
+        _ = log2_buf_align;
         _ = return_address;
         alignedFree(buf.ptr);
     }
 
     fn getHeader(ptr: [*]u8) *[*]u8 {
-        return @ptrFromInt(*[*]u8, @intFromPtr(ptr) - @sizeOf(usize));
+        return @ptrFromInt(@intFromPtr(ptr) - @sizeOf(usize));
     }
 
-    fn alignedAlloc(len: usize, alignment: usize) ?[*]u8 {
+    fn alignedAlloc(len: usize, log2_align: u8) ?[*]u8 {
+        const alignment = @as(usize, 1) << @as(Allocator.Log2Align, @intCast(log2_align));
+
         // Thin wrapper around regular malloc, overallocate to account for
         // alignment padding and store the orignal malloc()'ed pointer before
         // the aligned address.
-        var unaligned_ptr = @ptrCast([*]u8, c.malloc(len + alignment - 1 + @sizeOf(usize)) orelse return null);
+        var unaligned_ptr: [*]u8 = @ptrCast(c.malloc(len + alignment - 1 + @sizeOf(usize)) orelse return null);
         const unaligned_addr = @intFromPtr(unaligned_ptr);
-        const aligned_addr = mem.alignForward(unaligned_addr + @sizeOf(usize), alignment);
+        const aligned_addr = mem.alignForward(usize, unaligned_addr + @sizeOf(usize), alignment);
         var aligned_ptr = unaligned_ptr + (aligned_addr - unaligned_addr);
         getHeader(aligned_ptr).* = unaligned_ptr;
 
@@ -110,3 +97,58 @@ pub const CAllocator = struct {
         return c.malloc_usable_size(unaligned_ptr) - delta;
     }
 };
+
+/// Asserts allocations are within `@alignOf(std.c.max_align_t)` and directly calls
+/// `malloc`/`free`. Does not attempt to utilize `malloc_usable_size`.
+/// This allocator is safe to use as the backing allocator with
+/// `ArenaAllocator` for example and is more optimal in such a case
+/// than `c_allocator`.
+pub const raw_c_allocator = Allocator{
+    .ptr = undefined,
+    .vtable = &raw_c_allocator_vtable,
+};
+const raw_c_allocator_vtable = Allocator.VTable{
+    .alloc = rawCAlloc,
+    .resize = rawCResize,
+    .free = rawCFree,
+};
+
+fn rawCAlloc(
+    _: *anyopaque,
+    len: usize,
+    log2_ptr_align: u8,
+    ret_addr: usize,
+) ?[*]u8 {
+    _ = ret_addr;
+    assert(log2_ptr_align <= comptime std.math.log2_int(usize, @alignOf(std.c.max_align_t)));
+    // Note that this pointer cannot be aligncasted to max_align_t because if
+    // len is < max_align_t then the alignment can be smaller. For example, if
+    // max_align_t is 16, but the user requests 8 bytes, there is no built-in
+    // type in C that is size 8 and has 16 byte alignment, so the alignment may
+    // be 8 bytes rather than 16. Similarly if only 1 byte is requested, malloc
+    // is allowed to return a 1-byte aligned pointer.
+    return @ptrCast(c.malloc(len));
+}
+
+fn rawCResize(
+    _: *anyopaque,
+    buf: []u8,
+    log2_old_align: u8,
+    new_len: usize,
+    ret_addr: usize,
+) bool {
+    _ = log2_old_align;
+    _ = ret_addr;
+    return new_len <= buf.len;
+}
+
+fn rawCFree(
+    _: *anyopaque,
+    buf: []u8,
+    log2_old_align: u8,
+    ret_addr: usize,
+) void {
+    _ = log2_old_align;
+    _ = ret_addr;
+    c.free(buf.ptr);
+}
