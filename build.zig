@@ -283,12 +283,14 @@ fn buildApp(b: *std.Build, comptime appName: []const u8, comptime lang: enum { c
     if (lang == .c) {
         app.addIncludePath(.{ .path = "./" });
         app.addObjectFile(.{ .path = "user/usys.zig" });
-        app.addCSourceFiles(&.{
-            "user/" ++ appName ++ ".c",
-            "user/ulib.c",
-            "user/printf.c",
-            "user/umalloc.c",
-        }, &.{});
+        app.addCSourceFiles(.{
+            .files = &.{
+                "user/" ++ appName ++ ".c",
+                "user/ulib.c",
+                "user/printf.c",
+                "user/umalloc.c",
+            },
+        });
     } else {
         if (apps_linking_c.has(appName)) {
             app.addIncludePath(.{ .path = "./" });
