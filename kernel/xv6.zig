@@ -71,6 +71,9 @@ pub const MAXPATH = 128;
 // end -- start of kernel page allocation area
 // PHYSTOP -- end RAM used by the kernel
 
+// virt_test
+pub const VIRT_TEST = 0x10_0000;
+
 // qemu puts UART registers here in physical memory.
 pub const UART0 = 0x1000_0000;
 pub const UART0_IRQ = 10;

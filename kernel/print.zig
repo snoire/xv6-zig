@@ -1,4 +1,5 @@
 const std = @import("std");
+const xv6 = @import("xv6.zig");
 const SpinLock = @import("SpinLock.zig");
 
 pub const color = struct {
@@ -30,10 +31,9 @@ fn print(comptime format: []const u8, args: anytype) void {
 
 pub fn printFn(comptime format: []const u8, args: anytype) void {
     if (locking) lock.acquire();
+    defer if (locking) lock.release();
 
     print(format, args);
-
-    if (locking) lock.release();
 }
 
 export fn printf(format: [*:0]const u8, ...) void {
@@ -41,6 +41,7 @@ export fn printf(format: [*:0]const u8, ...) void {
     defer @cVaEnd(&ap);
 
     if (locking) lock.acquire();
+    defer if (locking) lock.release();
 
     var state: enum { normal, wait_for_specifier } = .normal;
 
@@ -64,8 +65,6 @@ export fn printf(format: [*:0]const u8, ...) void {
             state = .normal;
         }
     }
-
-    if (locking) lock.release();
 }
 
 pub fn logFn(
@@ -75,6 +74,7 @@ pub fn logFn(
     args: anytype,
 ) void {
     if (locking) lock.acquire();
+    defer if (locking) lock.release();
 
     const scope_prefix = "(" ++ @tagName(scope) ++ "): ";
     const prefix = "[" ++
@@ -87,8 +87,6 @@ pub fn logFn(
         color.none ++
         "] " ++ scope_prefix;
     print(prefix ++ format ++ "\n", args);
-
-    if (locking) lock.release();
 }
 
 pub fn panicFn(msg: []const u8, _: ?*std.builtin.StackTrace, return_addr: ?usize) noreturn {
@@ -111,7 +109,10 @@ pub fn panicFn(msg: []const u8, _: ?*std.builtin.StackTrace, return_addr: ?usize
     }
 
     panicked = 1; // freeze uart output from other CPUs
-    while (true) {}
+
+    // shutdown qemu
+    @as(*volatile u32, @ptrFromInt(xv6.VIRT_TEST)).* = 0x5555;
+    unreachable;
 }
 
 export fn panic(msg: [*:0]const u8) noreturn {

@@ -455,6 +455,12 @@ pub fn init() void {
 
     kernel_pagetable = PageTable.create() catch unreachable;
 
+    // virt test
+    kvmmap(xv6.VIRT_TEST, 0x1000, .{
+        .readable = true,
+        .writable = true,
+    });
+
     // uart registers
     kvmmap(xv6.UART0, PGSIZE, .{
         .readable = true,
