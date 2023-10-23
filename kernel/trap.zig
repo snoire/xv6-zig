@@ -128,7 +128,7 @@ export fn usertrapret() void {
     // tell trampoline.S the user page table to switch to.
     const satp = .{
         .mode = .sv39,
-        .ppn = p.pagetable.phy.ppn,
+        .ppn = p.pagetable.addr.ppn,
     };
 
     // jump to userret in trampoline.S at the top of memory, which

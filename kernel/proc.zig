@@ -5,7 +5,6 @@ const c = @import("c.zig");
 const SpinLock = @import("SpinLock.zig");
 const vm = @import("vm.zig");
 const PageTable = vm.PageTable;
-const Address = vm.Address;
 const kalloc = xv6.kalloc;
 const print = xv6.print;
 const allocator = std.heap.page_allocator;
@@ -156,14 +155,16 @@ pub const Proc = extern struct {
         // at the highest user virtual address.
         // only the supervisor uses it, on the way
         // to/from user space, so not PTE_U.
-        pagetable.mappages(.{ .addr = TRAMPOLINE }, PGSIZE, .{ .addr = @intFromPtr(&trampoline) }, .{
+        const trampoline_addr = @intFromPtr(&trampoline);
+        pagetable.mappages(@bitCast(TRAMPOLINE), PGSIZE, @bitCast(trampoline_addr), .{
             .readable = true,
             .executable = true,
         });
 
         // map the trapframe page just below the trampoline page, for
         // trampoline.S.
-        pagetable.mappages(.{ .addr = TRAPFRAME }, PGSIZE, .{ .addr = @intFromPtr(p.trapframe) }, .{
+        const trapframe_addr = @intFromPtr(p.trapframe);
+        pagetable.mappages(@bitCast(TRAPFRAME), PGSIZE, @bitCast(trapframe_addr), .{
             .readable = true,
             .writable = true,
         });
@@ -275,11 +276,9 @@ pub fn growproc(n: isize) !void {
     var sz = p.sz;
 
     if (n > 0) {
-        sz = try p.pagetable.alloc(sz, sz + @as(usize, @intCast(n)), .{
-            .writable = true,
-        });
+        sz = try p.pagetable.alloc(sz, @intCast(n), .{ .writable = true });
     } else if (n < 0) {
-        sz = p.pagetable.dealloc(sz, sz - @as(usize, @intCast(-n)));
+        sz = p.pagetable.dealloc(sz, @intCast(-n));
     }
 
     p.sz = sz;
@@ -393,7 +392,7 @@ pub fn wait(addr: usize) u32 {
             // Found one.
             var pid = pp.pid;
             if (addr != 0 and p.pagetable.copyout(
-                .{ .addr = addr },
+                @bitCast(addr),
                 @ptrCast(&pp.xstate),
                 @sizeOf(c_int),
             ) < 0) {
@@ -565,12 +564,13 @@ pub export fn kill(pid: u32) c_int {
 /// Copy to either a user address, or kernel address,
 /// depending on usr_dst.
 /// Returns 0 on success, -1 on error.
-export fn either_copyout(user_dst: bool, dst: Address, src: [*]const u8, len: usize) c_int {
+export fn either_copyout(user_dst: bool, dst: usize, src: [*]const u8, len: usize) c_int {
     var p = Proc.myproc().?;
     if (user_dst) {
-        return p.pagetable.copyout(dst.vir_addr, src, len);
+        return p.pagetable.copyout(@bitCast(dst), src, len);
     } else {
-        std.mem.copy(u8, dst.phy_addr.buffer[0..len], src[0..len]);
+        const ptr: [*]u8 = @ptrFromInt(dst);
+        std.mem.copy(u8, ptr[0..len], src[0..len]);
         return 0;
     }
 }
@@ -578,12 +578,13 @@ export fn either_copyout(user_dst: bool, dst: Address, src: [*]const u8, len: us
 /// Copy from either a user address, or kernel address,
 /// depending on usr_src.
 /// Returns 0 on success, -1 on error.
-export fn either_copyin(dst: [*]u8, user_src: bool, src: Address, len: usize) c_int {
+export fn either_copyin(dst: [*]u8, user_src: bool, src: usize, len: usize) c_int {
     var p = Proc.myproc().?;
     if (user_src) {
-        return p.pagetable.copyin(dst, src.vir_addr, len);
+        return p.pagetable.copyin(dst, @bitCast(src), len);
     } else {
-        std.mem.copy(u8, dst[0..len], src.phy_addr.buffer[0..len]);
+        const ptr: [*]u8 = @ptrFromInt(src);
+        std.mem.copy(u8, dst[0..len], ptr[0..len]);
         return 0;
     }
 }

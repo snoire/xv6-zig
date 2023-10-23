@@ -8,7 +8,7 @@ const kalloc = @import("../kalloc.zig");
 const PageTable = vm.PageTable;
 const ElfHdr = std.elf.Elf64_Ehdr;
 const ProgHdr = std.elf.Elf64_Phdr;
-const PGSIZE = 4096;
+const PGSIZE = vm.PGSIZE;
 
 /// Load a program segment into pagetable at virtual address va.
 /// va must be page-aligned
@@ -16,18 +16,19 @@ const PGSIZE = 4096;
 /// Returns 0 on success, -1 on failure.
 fn loadseg(
     pagetable: vm.PageTable,
-    va: vm.VirAddr,
+    va: usize,
     ip: *c.Inode,
     offset: usize,
     sz: usize,
 ) !void {
     var i: usize = 0;
-    while (i < sz) : (i += vm.PGSIZE) {
-        var pa = try pagetable.walkaddr(.{ .addr = va.addr + i });
-        if (pa.addr == 0) return error.LoadSeg;
+    while (i < sz) : (i += PGSIZE) {
+        var pa = try pagetable.walkaddr(@bitCast(va + i));
+        const addr: usize = @bitCast(pa);
+        if (addr == 0) return error.LoadSeg;
 
-        var n = @min(sz - i, vm.PGSIZE);
-        if (ip.read(false, pa.addr, offset + i, n) != n)
+        var n = @min(sz - i, PGSIZE);
+        if (ip.read(false, addr, offset + i, n) != n)
             return error.LoadSeg;
     }
 }
@@ -81,7 +82,7 @@ pub fn exec(path: [*:0]const u8, argv: [*:null]const ?[*:0]const u8) !isize {
 
             sz = try pagetable.alloc(sz, ph.p_vaddr + ph.p_memsz, flags2perm(ph.p_flags));
 
-            try loadseg(pagetable, .{ .addr = ph.p_vaddr }, ip, ph.p_offset, ph.p_filesz);
+            try loadseg(pagetable, ph.p_vaddr, ip, ph.p_offset, ph.p_filesz);
             off += @sizeOf(ProgHdr);
         }
     }
@@ -96,7 +97,7 @@ pub fn exec(path: [*:0]const u8, argv: [*:null]const ?[*:0]const u8) !isize {
     var sz1 = try pagetable.alloc(sz, sz + 16 * PGSIZE, .{ .writable = true });
 
     sz = sz1;
-    pagetable.clear(.{ .addr = sz - 16 * PGSIZE });
+    pagetable.clear(@bitCast(sz - 16 * PGSIZE));
     var sp = sz;
     var stackbase = sp - PGSIZE;
 
@@ -108,7 +109,7 @@ pub fn exec(path: [*:0]const u8, argv: [*:null]const ?[*:0]const u8) !isize {
         sp -= std.mem.len(arg.*.?) + 1;
         sp -= sp % 16; // riscv sp must be 16-byte aligned
         if (sp < stackbase) return error.stackbase;
-        if (pagetable.copyout(.{ .addr = sp }, arg.*.?, std.mem.len(arg.*.?) + 1) < 0)
+        if (pagetable.copyout(@bitCast(sp), arg.*.?, std.mem.len(arg.*.?) + 1) < 0)
             return error.copyout;
         stack.* = sp;
     }
@@ -120,7 +121,7 @@ pub fn exec(path: [*:0]const u8, argv: [*:null]const ?[*:0]const u8) !isize {
     sp -= sp % 16;
 
     if (sp < stackbase) return error.stackbase;
-    if (pagetable.copyout(.{ .addr = sp }, @ptrCast(&ustack), (args.len + 1) * @sizeOf(usize)) < 0)
+    if (pagetable.copyout(@bitCast(sp), @ptrCast(&ustack), (args.len + 1) * @sizeOf(usize)) < 0)
         return error.copyout;
 
     // arguments to user main(argc, argv)

@@ -15,7 +15,7 @@ fn fetchAddr(addr: usize) usize {
     }
 
     var ip: usize = undefined;
-    _ = p.pagetable.copyin(@ptrCast(&ip), .{ .addr = addr }, @sizeOf(usize));
+    _ = p.pagetable.copyin(@ptrCast(&ip), @bitCast(addr), @sizeOf(usize));
     return ip;
 }
 
@@ -23,7 +23,7 @@ fn fetchAddr(addr: usize) usize {
 /// Returns length of string, not including nul, or -1 for error.
 fn fetchStr(addr: usize, buf: []u8) ![:0]const u8 {
     var p: *Proc = Proc.myproc().?;
-    return p.pagetable.copyinstr(buf, .{ .addr = addr });
+    return p.pagetable.copyinstr(buf, @bitCast(addr));
 }
 
 /// Fetch the nth word-sized system call argument as a null-terminated string.
@@ -362,17 +362,19 @@ pub fn pipe() isize {
     var p = Proc.myproc().?;
     var fdarray = syscall.argaddr(0);
 
+    const fd_size: usize = @sizeOf(@TypeOf(fd0, fd1));
+
     var ret = p.pagetable.copyout(
-        .{ .addr = fdarray },
+        @bitCast(fdarray),
         @ptrCast(&fd0),
-        @sizeOf(@TypeOf(fd0)),
+        fd_size,
     );
     if (ret < 0) @panic("copyout");
 
     ret = p.pagetable.copyout(
-        .{ .addr = fdarray + @sizeOf(@TypeOf(fd0)) },
+        @bitCast(fdarray + fd_size),
         @ptrCast(&fd1),
-        @sizeOf(@TypeOf(fd1)),
+        fd_size,
     );
     if (ret < 0) @panic("copyout");
 
