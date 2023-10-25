@@ -4,7 +4,7 @@ const Proc = @import("proc.zig").Proc;
 const log = std.log.scoped(.syscall);
 
 pub fn arg(n: u8) usize {
-    var p: *Proc = Proc.myproc().?;
+    const p: *Proc = Proc.myproc().?;
 
     return switch (n) {
         0 => p.trapframe.?.a0,
@@ -103,8 +103,8 @@ const syscalls = blk: {
 };
 
 pub fn syscall() void {
-    var p: *Proc = Proc.myproc().?;
-    var num = p.trapframe.?.a7;
+    const p: *Proc = Proc.myproc().?;
+    const num = p.trapframe.?.a7;
 
     if (num > 0 and num < syscalls.len) {
         // Use num to lookup the system call function for num, call it,

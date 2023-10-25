@@ -115,7 +115,7 @@ pub const Proc = extern struct {
     /// and return with p->lock held.
     /// If there are no free procs, or a memory allocation fails, return 0.
     fn allocproc() !*Proc {
-        var p: *Proc = for (&proc) |*p| {
+        const p: *Proc = for (&proc) |*p| {
             p.lock.acquire();
 
             if (p.state == .unused) {
@@ -149,7 +149,7 @@ pub const Proc = extern struct {
     /// but with trampoline and trapframe pages.
     pub fn createPagetable(p: *Proc) !PageTable {
         // An empty page table.
-        var pagetable = try PageTable.create();
+        const pagetable = try PageTable.create();
 
         // map the trampoline code (for system call return)
         // at the highest user virtual address.
@@ -217,8 +217,7 @@ pub const Proc = extern struct {
         p.lock.acquire();
         defer p.lock.release();
 
-        var k = p.killed;
-        return if (k != 0) true else false;
+        return if (p.killed != 0) true else false;
     }
 };
 
@@ -239,7 +238,7 @@ fn allocpid() u32 {
     pid_lock.acquire();
     defer pid_lock.release();
 
-    var pid = nextpid;
+    const pid = nextpid;
     nextpid += 1;
     return pid;
 }
@@ -250,7 +249,7 @@ fn allocpid() u32 {
 const initcode = @embedFile("initcode");
 
 pub fn userinit() void {
-    var p = Proc.allocproc() catch unreachable;
+    const p = Proc.allocproc() catch unreachable;
     initproc = p;
 
     // allocate one user page and copy initcode's instructions
@@ -272,24 +271,24 @@ pub fn userinit() void {
 /// Grow or shrink user memory by n bytes.
 /// Return 0 on success, -1 on failure.
 pub fn growproc(n: isize) !void {
-    var p = Proc.myproc().?;
-    var sz = p.sz;
+    const p = Proc.myproc().?;
+    var size = p.sz;
 
     if (n > 0) {
-        sz = try p.pagetable.alloc(sz, @intCast(n), .{ .writable = true });
+        size = try p.pagetable.alloc(size, @intCast(n), .{ .writable = true });
     } else if (n < 0) {
-        sz = p.pagetable.dealloc(sz, @intCast(-n));
+        size = p.pagetable.dealloc(size, @intCast(-n));
     }
 
-    p.sz = sz;
+    p.sz = size;
 }
 
 // Create a new process, copying the parent.
 // Sets up child kernel stack to return as if from fork() system call.
 pub fn fork() !u32 {
     // Allocate process.
-    var p = Proc.myproc().?;
-    var np = try Proc.allocproc();
+    const p = Proc.myproc().?;
+    const np = try Proc.allocproc();
 
     // Copy user memory from parent to child.
     try p.pagetable.copy(np.pagetable, p.sz);
@@ -313,7 +312,7 @@ pub fn fork() !u32 {
 
     std.mem.copy(u8, np.name[0..], p.name[0..]);
 
-    var pid = np.pid;
+    const pid = np.pid;
 
     np.lock.release();
 
@@ -332,7 +331,7 @@ pub fn fork() !u32 {
 /// An exited process remains in the zombie state
 /// until its parent calls wait().
 pub fn exit(status: i32) noreturn {
-    var p = Proc.myproc().?;
+    const p = Proc.myproc().?;
     if (p == initproc) @panic("init exiting");
 
     // Close all open files.
@@ -372,7 +371,7 @@ pub fn exit(status: i32) noreturn {
 /// Wait for a child process to exit and return its pid.
 /// Return -1 if this process has no children.
 pub fn wait(addr: usize) u32 {
-    var p = Proc.myproc().?;
+    const p = Proc.myproc().?;
 
     wait_lock.acquire();
     defer wait_lock.release();
@@ -390,7 +389,7 @@ pub fn wait(addr: usize) u32 {
 
             if (pp.state != .zombie) continue;
             // Found one.
-            var pid = pp.pid;
+            const pid = pp.pid;
             if (addr != 0 and p.pagetable.copyout(
                 @bitCast(addr),
                 @ptrCast(&pp.xstate),
@@ -421,7 +420,7 @@ pub fn wait(addr: usize) u32 {
 ///  - eventually that process transfers control
 ///    via swtch back to the scheduler.
 pub fn scheduler() void {
-    var cpu = mycpu();
+    const cpu = mycpu();
     cpu.proc = null;
 
     while (true) {
@@ -456,21 +455,21 @@ pub fn scheduler() void {
 /// break in the few places where a lock is held but
 /// there's no process.
 pub fn sched() void {
-    var p = Proc.myproc().?;
+    const p = Proc.myproc().?;
 
     if (!p.lock.holding()) @panic("sched p->lock");
     if (mycpu().noff != 1) @panic("sched locks");
     if (p.state == .running) @panic("sched running");
     if (SpinLock.intrGet()) @panic("sched interruptible");
 
-    var intena = mycpu().intena;
+    const intena = mycpu().intena;
     p.context.swtch(&mycpu().context);
     mycpu().intena = intena;
 }
 
 /// Give up the CPU for one scheduling round.
 pub fn yield() void {
-    var p = Proc.myproc().?;
+    const p = Proc.myproc().?;
     p.lock.acquire();
     defer p.lock.release();
 
@@ -509,7 +508,7 @@ pub export fn sleep(chan: *anyopaque, lk: *c.SpinLock) void {
     // guaranteed that we won't miss any wakeup
     // (wakeup locks p->lock),
     // so it's okay to release lk.
-    var p = Proc.myproc().?;
+    const p = Proc.myproc().?;
     p.lock.acquire();
     lk.release();
 
@@ -565,7 +564,7 @@ pub export fn kill(pid: u32) c_int {
 /// depending on usr_dst.
 /// Returns 0 on success, -1 on error.
 export fn either_copyout(user_dst: bool, dst: usize, src: [*]const u8, len: usize) c_int {
-    var p = Proc.myproc().?;
+    const p = Proc.myproc().?;
     if (user_dst) {
         return p.pagetable.copyout(@bitCast(dst), src, len);
     } else {
@@ -579,7 +578,7 @@ export fn either_copyout(user_dst: bool, dst: usize, src: [*]const u8, len: usiz
 /// depending on usr_src.
 /// Returns 0 on success, -1 on error.
 export fn either_copyin(dst: [*]u8, user_src: bool, src: usize, len: usize) c_int {
-    var p = Proc.myproc().?;
+    const p = Proc.myproc().?;
     if (user_src) {
         return p.pagetable.copyin(dst, @bitCast(src), len);
     } else {

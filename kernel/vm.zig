@@ -140,7 +140,7 @@ pub const PageTable = packed union {
         const indices: [2]u9 = .{ vir.l2, vir.l1 };
 
         for (indices) |index| {
-            var pte = &pt.ptes.?[index];
+            const pte = &pt.ptes.?[index];
 
             if (pte.flags.valid) {
                 pt = pte.getPageTable();
@@ -169,7 +169,7 @@ pub const PageTable = packed union {
         const addr: usize = @bitCast(vir);
         if (addr >= VirAddr.MAXVA) return error.NotMapped;
 
-        var pte = pagetable.walk(vir, false) catch return error.NotMapped;
+        const pte = pagetable.walk(vir, false) catch return error.NotMapped;
         if (!pte.flags.valid or !pte.flags.user) return error.NotMapped;
 
         return .{
@@ -190,7 +190,7 @@ pub const PageTable = packed union {
         var pa: usize = @bitCast(phy);
 
         while (true) {
-            var pte = pagetable.walk(@bitCast(va), true) catch unreachable;
+            const pte = pagetable.walk(@bitCast(va), true) catch unreachable;
             if (pte.flags.valid) @panic("mappages: remap");
 
             const phy_addr: PhyAddr = @bitCast(pa);
@@ -213,7 +213,7 @@ pub const PageTable = packed union {
 
         var addr = start;
         while (addr < end) : (addr += PGSIZE) {
-            var pte = pagetable.walk(@bitCast(addr), false) catch unreachable;
+            const pte = pagetable.walk(@bitCast(addr), false) catch unreachable;
             if (!pte.flags.valid) @panic("uvmunmap: not mapped");
             if (pte.flags.eql(.{ .valid = true })) @panic("uvmunmap: not a leaf");
 
@@ -288,7 +288,7 @@ pub const PageTable = packed union {
                 @panic("freewalk: leaf");
             }
 
-            var child = pte.getPageTable();
+            const child = pte.getPageTable();
             child.freewalk();
             pte.* = .{};
         }
@@ -308,7 +308,7 @@ pub const PageTable = packed union {
     pub fn copy(old: PageTable, new: PageTable, size: usize) !void {
         var i: usize = 0;
         while (i < size) : (i += PGSIZE) {
-            var pte = walk(old, @bitCast(i), false) catch unreachable;
+            const pte = walk(old, @bitCast(i), false) catch unreachable;
             if (!pte.flags.valid) @panic("uvmcopy: page not present");
 
             const source: *Page = @ptrFromInt(pte.getPhyAddr());
@@ -322,7 +322,7 @@ pub const PageTable = packed union {
 
     /// mark a PTE invalid for user access. used by exec for the user stack guard page.
     pub fn clear(pagetable: PageTable, vir: VirAddr) void {
-        var pte = pagetable.walk(vir, false) catch unreachable;
+        const pte = pagetable.walk(vir, false) catch unreachable;
         pte.flags.user = false;
     }
 

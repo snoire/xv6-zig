@@ -70,7 +70,7 @@ fn timerinit() void {
     // scratch[0..2] : space for timervec to save registers.
     // scratch[3] : address of CLINT MTIMECMP register.
     // scratch[4] : desired interval (in cycles) between timer interrupts.
-    var scratch = &timer_scratch[id];
+    const scratch = &timer_scratch[id];
     scratch[3] = clint.mtimecmp.get(id);
     scratch[4] = interval;
     csr.write(.mscratch, @intFromPtr(scratch));

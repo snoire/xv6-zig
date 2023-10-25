@@ -72,13 +72,13 @@ pub fn release(self: *Self) void {
 pub fn pushOff() void {
     intrOff();
 
-    var cpu: *Cpu = mycpu();
+    const cpu: *Cpu = mycpu();
     if (cpu.noff == 0) cpu.intena = if (intrGet()) 1 else 0;
     cpu.noff += 1;
 }
 
 pub fn popOff() void {
-    var cpu: *Cpu = mycpu();
+    const cpu: *Cpu = mycpu();
 
     if (intrGet()) @panic("pop_off - interruptible");
     if (cpu.noff < 1) @panic("pop_off");

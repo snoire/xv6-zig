@@ -102,7 +102,7 @@ fn runcmd(ast: Ast, index: Ast.Node.Index) !void {
             const extra = ast.extraData(node.data.rhs, Ast.Node.Redirection);
             const FdList = std.ArrayList(c_int);
 
-            const stdio_pipe, var fd_list = blk: {
+            const stdio_pipe, const fd_list = blk: {
                 var pipes: [3]?[2]c_int = undefined;
                 var fds: [3]?FdList = undefined;
 

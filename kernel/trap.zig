@@ -47,7 +47,7 @@ export fn usertrap() void {
     // since we're now in the kernel.
     csr.write(.stvec, @intFromPtr(&kernelvec));
 
-    var p = Proc.myproc().?;
+    const p = Proc.myproc().?;
 
     // save user program counter.
     p.trapframe.?.epc = csr.read(.sepc);
@@ -94,7 +94,7 @@ extern const userret: u8;
 
 /// return to user space
 export fn usertrapret() void {
-    var p: *Proc = Proc.myproc().?;
+    const p: *Proc = Proc.myproc().?;
 
     // we're about to switch the destination of traps from
     // kerneltrap() to usertrap(), so turn off interrupts until

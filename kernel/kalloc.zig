@@ -23,7 +23,7 @@ pub fn init() void {
 /// Returns a pointer that the kernel can use.
 /// Panic if the memory cannot be allocated.
 export fn kalloc() *align(PGSIZE) Page {
-    var page = allocator.create(Page) catch |err| @panic(@errorName(err));
+    const page = allocator.create(Page) catch |err| @panic(@errorName(err));
 
     // clear the page
     @memset(page, 0);
