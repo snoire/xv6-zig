@@ -11,7 +11,6 @@ pub const proc = @import("proc.zig");
 pub const plic = @import("plic.zig");
 pub const trap = @import("trap.zig");
 pub const Buffer = @import("fs/Buffer.zig");
-pub const log = @import("fs/log.zig");
 
 pub const SysCall = syscall.SysCall;
 

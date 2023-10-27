@@ -85,11 +85,6 @@ fn timerinit() void {
     csr.mie.set(.{ .mtie = true });
 }
 
-// force unused export functions to be compiled
-comptime {
-    _ = @import("fs/log.zig");
-}
-
 pub const os = @import("os.zig");
 pub const std_options = struct {
     // Define logFn to override the std implementation
