@@ -370,7 +370,7 @@ pub fn exit(status: i32) noreturn {
 
 /// Wait for a child process to exit and return its pid.
 /// Return -1 if this process has no children.
-pub fn wait(addr: usize) u32 {
+pub fn wait(addr: usize) i32 {
     const p = Proc.myproc().?;
 
     wait_lock.acquire();
@@ -399,11 +399,11 @@ pub fn wait(addr: usize) u32 {
             }
 
             pp.freeproc();
-            return pid;
+            return @intCast(pid);
         } else {
             // No point waiting if we don't have any children.
             if (!havekids or p.isKilled()) {
-                @panic("have no children");
+                return -1;
             }
 
             // Wait for a child to exit.

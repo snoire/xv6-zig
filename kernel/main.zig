@@ -30,7 +30,7 @@ pub fn main() callconv(.C) void {
         kernel.trap.inithart(); // install kernel trap vector
         kernel.plic.init(); // set up interrupt controller
         kernel.plic.inithart(); // ask PLIC for device interrupts
-        kernel.Buffer.init(); // buffer cache
+        c.binit(); // buffer cache
         c.iinit(); // inode table
         c.fileinit(); // file table
         c.virtio_disk_init(); // emulated hard disk

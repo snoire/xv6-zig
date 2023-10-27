@@ -10,7 +10,6 @@ pub const vm = @import("vm.zig");
 pub const proc = @import("proc.zig");
 pub const plic = @import("plic.zig");
 pub const trap = @import("trap.zig");
-pub const Buffer = @import("fs/Buffer.zig");
 
 pub const SysCall = syscall.SysCall;
 
@@ -47,7 +46,7 @@ pub const LOGSIZE = (MAXOPBLOCKS * 3);
 /// size of disk block cache
 pub const NBUF = (MAXOPBLOCKS * 3);
 /// size of file system in blocks
-pub const FSSIZE = 32000;
+pub const FSSIZE = 97000;
 /// maximum file path name
 pub const MAXPATH = 128;
 
