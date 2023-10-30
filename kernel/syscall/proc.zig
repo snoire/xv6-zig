@@ -19,23 +19,23 @@ pub fn fork() !isize {
 }
 
 pub fn wait() isize {
-    var p: usize = syscall.argaddr(0);
+    const p: usize = syscall.argaddr(0);
     return proc.wait(p);
 }
 
 pub fn sbrk() usize {
-    var n: isize = @bitCast(syscall.arg(0));
-    var addr = Proc.myproc().?.sz;
+    const n: isize = @bitCast(syscall.arg(0));
+    const addr = Proc.myproc().?.sz;
     proc.growproc(n) catch return std.math.maxInt(usize);
     return addr;
 }
 
 pub fn sleep() !isize {
-    var n = try syscall.argint(0);
+    const n = try syscall.argint(0);
     trap.tickslock.acquire();
     defer trap.tickslock.release();
 
-    var ticks0 = trap.ticks;
+    const ticks0 = trap.ticks;
 
     while (trap.ticks - ticks0 < n) {
         if (Proc.myproc().?.isKilled()) return -1;
@@ -45,7 +45,7 @@ pub fn sleep() !isize {
 }
 
 pub fn kill() !isize {
-    var pid = try syscall.argint(0);
+    const pid = try syscall.argint(0);
     return @intCast(proc.kill(pid));
 }
 
@@ -53,6 +53,6 @@ pub fn uptime() isize {
     trap.tickslock.acquire();
     defer trap.tickslock.release();
 
-    var xticks = trap.ticks;
+    const xticks = trap.ticks;
     return xticks;
 }

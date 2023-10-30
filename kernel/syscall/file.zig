@@ -9,7 +9,7 @@ const O = xv6.O;
 
 /// Fetch the uint64 at addr from the current process.
 fn fetchAddr(addr: usize) usize {
-    var p: *Proc = Proc.myproc().?;
+    const p: *Proc = Proc.myproc().?;
     if (addr >= p.sz or addr + @sizeOf(usize) > p.sz) {
         @panic("fetchAddr");
     }
@@ -22,7 +22,7 @@ fn fetchAddr(addr: usize) usize {
 /// Fetch the nul-terminated string at addr from the current process.
 /// Returns length of string, not including nul, or -1 for error.
 fn fetchStr(addr: usize, buf: []u8) ![:0]const u8 {
-    var p: *Proc = Proc.myproc().?;
+    const p: *Proc = Proc.myproc().?;
     return p.pagetable.copyinstr(buf, @bitCast(addr));
 }
 
@@ -30,15 +30,15 @@ fn fetchStr(addr: usize, buf: []u8) ![:0]const u8 {
 /// Copies into buf, at most max.
 /// Returns string length if OK (including nul), panic if error.
 fn argstr(n: u8, buf: []u8) ![:0]const u8 {
-    var addr = syscall.argaddr(n);
+    const addr = syscall.argaddr(n);
     return fetchStr(addr, buf);
 }
 
 /// Fetch the nth word-sized system call argument as a file descriptor
 /// and return both the descriptor and the corresponding struct file.
 fn argfile(n: u8) !struct { u32, *c.File } {
-    var fd = try syscall.argint(n);
-    var f = Proc.myproc().?.ofile[fd];
+    const fd = try syscall.argint(n);
+    const f = Proc.myproc().?.ofile[fd];
 
     if (fd >= xv6.NOFILE or f == null)
         return error.argfile;
@@ -49,7 +49,7 @@ fn argfile(n: u8) !struct { u32, *c.File } {
 /// Allocate a file descriptor for the given file.
 /// Takes over file reference from caller on success.
 fn fdalloc(f: *c.File) u32 {
-    var p = Proc.myproc().?;
+    const p = Proc.myproc().?;
 
     return for (&p.ofile, 0..) |*ofile, i| {
         if (ofile.* == null) {
@@ -61,22 +61,22 @@ fn fdalloc(f: *c.File) u32 {
 
 pub fn dup() !isize {
     _, const f = try argfile(0);
-    var fd = fdalloc(f);
+    const fd = fdalloc(f);
     _ = f.dup();
     return fd;
 }
 
 pub fn read() !isize {
     _, const f = try argfile(0);
-    var p = syscall.argaddr(1);
-    var n = syscall.arg(2);
+    const p = syscall.argaddr(1);
+    const n = syscall.arg(2);
     return f.read(p, n);
 }
 
 pub fn write() !isize {
     _, const f = try argfile(0);
-    var p = syscall.argaddr(1);
-    var n = syscall.arg(2);
+    const p = syscall.argaddr(1);
+    const n = syscall.arg(2);
     return f.write(p, n);
 }
 
@@ -89,7 +89,7 @@ pub fn close() !isize {
 
 pub fn fstat() !isize {
     _, const f = try argfile(0);
-    var st = syscall.argaddr(1); // user pointer to struct stat
+    const st = syscall.argaddr(1); // user pointer to struct stat
     return f.stat(st);
 }
 
@@ -98,13 +98,13 @@ pub fn link() !isize {
     var old_buf: [xv6.MAXPATH]u8 = undefined;
     var new_buf: [xv6.MAXPATH]u8 = undefined;
 
-    var old = try argstr(0, &old_buf);
-    var new = try argstr(1, &new_buf);
+    const old = try argstr(0, &old_buf);
+    const new = try argstr(1, &new_buf);
 
     c.begin_op();
     defer c.end_op();
 
-    var ip = c.namei(old) orelse return error.BadLink;
+    const ip = c.namei(old) orelse return error.BadLink;
     errdefer {
         ip.ilock();
         ip.nlink -= 1;
@@ -121,7 +121,7 @@ pub fn link() !isize {
     }
 
     var name: [c.Dirent.DIRSIZ]u8 = undefined;
-    var dp = c.nameiparent(new, &name) orelse return error.BadLink;
+    const dp = c.nameiparent(new, &name) orelse return error.BadLink;
     {
         dp.ilock();
         defer dp.unlockput();
@@ -140,7 +140,7 @@ fn isdirempty(dp: *c.Inode) bool {
     var off: usize = 2 * @sizeOf(c.Dirent); // skip "." and ".."
 
     while (off < dp.size) : (off += @sizeOf(c.Dirent)) {
-        var nbytes = dp.read(false, @intFromPtr(&de), @intCast(off), @sizeOf(c.Dirent));
+        const nbytes = dp.read(false, @intFromPtr(&de), @intCast(off), @sizeOf(c.Dirent));
         if (nbytes != @sizeOf(c.Dirent)) @panic("isdirempty: readi");
         if (de.inum != 0) return false;
     } else {
@@ -150,13 +150,13 @@ fn isdirempty(dp: *c.Inode) bool {
 
 pub fn unlink() !isize {
     var path_buf: [xv6.MAXPATH]u8 = undefined;
-    var path = try argstr(0, &path_buf);
+    const path = try argstr(0, &path_buf);
 
     c.begin_op();
     defer c.end_op();
 
     var name: [c.Dirent.DIRSIZ]u8 = undefined;
-    var dp = c.nameiparent(path, &name) orelse return error.Unlink;
+    const dp = c.nameiparent(path, &name) orelse return error.Unlink;
 
     dp.ilock();
     errdefer dp.unlockput();
@@ -174,7 +174,7 @@ pub fn unlink() !isize {
     }
 
     var off: u32 = undefined;
-    var ip = dp.dirlookup(&name, &off) orelse return error.NotFound;
+    const ip = dp.dirlookup(&name, &off) orelse return error.NotFound;
     ip.ilock();
     errdefer ip.unlockput();
 
@@ -186,8 +186,8 @@ pub fn unlink() !isize {
         return error.DirIsNotEmpty;
     }
 
-    var de = std.mem.zeroes(c.Dirent);
-    var nbytes = dp.write(false, @intFromPtr(&de), off, @sizeOf(c.Dirent));
+    const de = std.mem.zeroes(c.Dirent);
+    const nbytes = dp.write(false, @intFromPtr(&de), off, @sizeOf(c.Dirent));
     if (nbytes != @sizeOf(c.Dirent)) {
         @panic("unlink: writei");
     }
@@ -208,11 +208,11 @@ pub fn unlink() !isize {
 fn create(path: [*:0]const u8, file_type: c.Stat.Type, major: c_short, minor: c_short) !*c.Inode {
     var name: [c.Dirent.DIRSIZ]u8 = undefined;
 
-    var dp = c.nameiparent(path, &name) orelse return error.Create;
+    const dp = c.nameiparent(path, &name) orelse return error.Create;
     dp.ilock();
     defer dp.unlockput();
 
-    var inode = dp.dirlookup(&name, null);
+    const inode = dp.dirlookup(&name, null);
     if (inode) |ip| {
         ip.ilock();
         errdefer ip.unlockput();
@@ -223,7 +223,7 @@ fn create(path: [*:0]const u8, file_type: c.Stat.Type, major: c_short, minor: c_
         return error.Create;
     }
 
-    var ip = c.Inode.alloc(dp.dev, file_type) orelse return error.Create;
+    const ip = c.Inode.alloc(dp.dev, file_type) orelse return error.Create;
     ip.ilock();
     // something went wrong. de-allocate ip.
     errdefer {
@@ -256,7 +256,7 @@ fn create(path: [*:0]const u8, file_type: c.Stat.Type, major: c_short, minor: c_
 
 pub fn open() !isize {
     var path_buf: [xv6.MAXPATH]u8 = undefined;
-    var path = try argstr(0, &path_buf);
+    const path = try argstr(0, &path_buf);
 
     const omode = try syscall.argint(1);
 
@@ -282,8 +282,8 @@ pub fn open() !isize {
         return error.Invalid;
     }
 
-    var f = c.File.alloc() orelse return error.Failed;
-    var fd = fdalloc(f);
+    const f = c.File.alloc() orelse return error.Failed;
+    const fd = fdalloc(f);
 
     if (ip.type == .device) {
         f.type = .device;
@@ -310,9 +310,9 @@ pub fn mkdir() !isize {
     defer c.end_op();
 
     var path_buf: [xv6.MAXPATH]u8 = undefined;
-    var path = try argstr(0, &path_buf);
+    const path = try argstr(0, &path_buf);
 
-    var ip = try create(path, .dir, 0, 0);
+    const ip = try create(path, .dir, 0, 0);
     ip.unlockput();
     return 0;
 }
@@ -322,26 +322,26 @@ pub fn mknod() !isize {
     defer c.end_op();
 
     var path_buf: [xv6.MAXPATH]u8 = undefined;
-    var path = try argstr(0, &path_buf);
+    const path = try argstr(0, &path_buf);
 
-    var major: c_short = @intCast(try syscall.argint(1));
-    var minor: c_short = @intCast(try syscall.argint(2));
+    const major: c_short = @intCast(try syscall.argint(1));
+    const minor: c_short = @intCast(try syscall.argint(2));
 
-    var ip = try create(path, .device, major, minor);
+    const ip = try create(path, .device, major, minor);
     ip.unlockput();
     return 0;
 }
 
 pub fn chdir() !isize {
-    var p = Proc.myproc().?;
+    const p = Proc.myproc().?;
 
     c.begin_op();
     defer c.end_op();
 
     var path_buf: [xv6.MAXPATH]u8 = undefined;
-    var path = try argstr(0, &path_buf);
+    const path = try argstr(0, &path_buf);
 
-    var ip = c.namei(path) orelse return error.Chdir;
+    const ip = c.namei(path) orelse return error.Chdir;
     ip.ilock();
     errdefer ip.unlockput();
 
@@ -360,12 +360,12 @@ pub fn exec() !isize {
 
     var list = std.BoundedArray(?[*:0]const u8, xv6.MAXARG){};
     var path_buf: [xv6.MAXPATH]u8 = undefined;
-    var path = try argstr(0, &path_buf);
+    const path = try argstr(0, &path_buf);
 
-    var uargv = syscall.argaddr(1);
+    const uargv = syscall.argaddr(1);
 
     for (0..xv6.MAXARG) |i| {
-        var uarg = fetchAddr(uargv + i * @sizeOf(usize));
+        const uarg = fetchAddr(uargv + i * @sizeOf(usize));
         if (uarg == 0) break;
 
         var buf = try allocator.create([xv6.MAXPATH]u8);
@@ -382,14 +382,14 @@ pub fn pipe() isize {
     var wf: *c.File = undefined;
     if (c.Pipe.alloc(&rf, &wf) < 0) @panic("pipe alloc");
 
-    var fd0 = fdalloc(rf);
+    const fd0 = fdalloc(rf);
     if (fd0 < 0) @panic("fd0 < 0");
 
-    var fd1 = fdalloc(wf);
+    const fd1 = fdalloc(wf);
     if (fd1 < 0) @panic("fd1 < 0");
 
-    var p = Proc.myproc().?;
-    var fdarray = syscall.argaddr(0);
+    const p = Proc.myproc().?;
+    const fdarray = syscall.argaddr(0);
 
     const fd_size: usize = @sizeOf(@TypeOf(fd0, fd1));
 

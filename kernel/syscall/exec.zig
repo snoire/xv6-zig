@@ -23,11 +23,11 @@ fn loadseg(
 ) !void {
     var i: usize = 0;
     while (i < sz) : (i += PGSIZE) {
-        var pa = try pagetable.walkaddr(@bitCast(va + i));
+        const pa = try pagetable.walkaddr(@bitCast(va + i));
         const addr: usize = @bitCast(pa);
         if (addr == 0) return error.LoadSeg;
 
-        var n = @min(sz - i, PGSIZE);
+        const n = @min(sz - i, PGSIZE);
         if (ip.read(false, addr, offset + i, n) != n)
             return error.LoadSeg;
     }
@@ -47,7 +47,7 @@ pub fn exec(path: [*:0]const u8, argv: [*:null]const ?[*:0]const u8) !isize {
     var elf: ElfHdr = undefined;
     var p = Proc.myproc().?;
 
-    var pagetable = try p.createPagetable();
+    const pagetable = try p.createPagetable();
     errdefer {
         if (sz != 0) pagetable.free(sz);
     }
@@ -56,7 +56,7 @@ pub fn exec(path: [*:0]const u8, argv: [*:null]const ?[*:0]const u8) !isize {
         c.begin_op();
         defer c.end_op();
 
-        var ip = c.namei(path) orelse return error.InvalidPath;
+        const ip = c.namei(path) orelse return error.InvalidPath;
 
         ip.ilock();
         defer ip.unlockput();
@@ -88,18 +88,18 @@ pub fn exec(path: [*:0]const u8, argv: [*:null]const ?[*:0]const u8) !isize {
     }
 
     p = Proc.myproc().?;
-    var oldsz: usize = p.sz;
+    const oldsz: usize = p.sz;
 
     // Allocate sixteen pages at the next page boundary.
     // Make the first inaccessible as a stack guard.
     // Use the rest as the user stack.
     sz = std.mem.alignForward(usize, sz, PGSIZE);
-    var sz1 = try pagetable.alloc(sz, sz + 16 * PGSIZE, .{ .writable = true });
+    const sz1 = try pagetable.alloc(sz, sz + 16 * PGSIZE, .{ .writable = true });
 
     sz = sz1;
     pagetable.clear(@bitCast(sz - 16 * PGSIZE));
     var sp = sz;
-    var stackbase = sp - PGSIZE;
+    const stackbase = sp - PGSIZE;
 
     // Push argument strings, prepare rest of stack in ustack.
     var ustack: [xv6.MAXARG]usize = undefined;
@@ -137,13 +137,12 @@ pub fn exec(path: [*:0]const u8, argv: [*:null]const ?[*:0]const u8) !isize {
     std.mem.copy(u8, &p.name, program_name[0 .. program_name.len + 1]);
 
     // Commit to the user image.
-    var oldpagetable = p.pagetable;
+    const oldpagetable = p.pagetable;
     p.pagetable = pagetable;
     p.sz = sz;
     p.trapframe.?.epc = elf.e_entry;
     p.trapframe.?.sp = sp;
     oldpagetable.freepagetable(oldsz);
 
-    const nargs: isize = @intCast(args.len);
-    return nargs;
+    return @intCast(args.len);
 }
