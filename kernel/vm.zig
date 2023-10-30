@@ -298,8 +298,7 @@ pub const PageTable = packed union {
 
     /// Free user memory pages, then free page-table pages.
     pub fn free(pagetable: PageTable, size: usize) void {
-        assert(size != 0);
-        pagetable.unmap(@bitCast(zero), pageRoundUp(size) / PGSIZE, true);
+        if (size > 0) pagetable.unmap(@bitCast(zero), pageRoundUp(size) / PGSIZE, true);
         freewalk(pagetable);
     }
 
@@ -316,7 +315,7 @@ pub const PageTable = packed union {
             @memcpy(page, source);
 
             const addr: usize = @intFromPtr(page);
-            mappages(new, @bitCast(i), PGSIZE, @bitCast(addr), pte.flags);
+            new.mappages(@bitCast(i), PGSIZE, @bitCast(addr), pte.flags);
         }
     }
 

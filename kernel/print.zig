@@ -111,7 +111,7 @@ pub fn panicFn(msg: []const u8, _: ?*std.builtin.StackTrace, return_addr: ?usize
     panicked = 1; // freeze uart output from other CPUs
 
     // shutdown qemu
-    @as(*volatile u32, @ptrFromInt(xv6.VIRT_TEST)).* = 0x5555;
+    @as(*volatile u32, @ptrFromInt(xv6.VIRT_TEST)).* = 0x3333;
     unreachable;
 }
 

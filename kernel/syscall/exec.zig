@@ -65,7 +65,7 @@ pub fn exec(path: [*:0]const u8, argv: [*:null]const ?[*:0]const u8) !isize {
         if (ip.read(false, @intFromPtr(&elf), 0, @sizeOf(ElfHdr)) != @sizeOf(ElfHdr))
             return error.BadElf;
 
-        if (!std.mem.eql(u8, elf.e_ident[0..4], std.elf.MAGIC))
+        if (!std.mem.eql(u8, elf.e_ident[0..std.elf.MAGIC.len], std.elf.MAGIC))
             return error.InvalidElfMagic;
 
         // Load program into memory.

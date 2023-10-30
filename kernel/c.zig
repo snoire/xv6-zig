@@ -106,8 +106,8 @@ pub const File = extern struct {
 
 // file.c
 pub extern fn filedup(file: *File) *File;
-pub extern fn fileread(file: *File, addr: usize, n: u32) c_int;
-pub extern fn filewrite(file: *File, addr: usize, n: u32) c_int;
+pub extern fn fileread(file: *File, addr: usize, n: usize) c_int;
+pub extern fn filewrite(file: *File, addr: usize, n: usize) c_int;
 pub extern fn fileclose(file: *File) void;
 pub extern fn filestat(file: *File, addr: usize) c_int;
 pub extern fn filealloc() ?*File;
@@ -163,7 +163,7 @@ pub extern fn iunlockput(inode: *Inode) void;
 pub extern fn iupdate(inode: *Inode) void;
 pub extern fn iunlock(inode: *Inode) void;
 pub extern fn dirlink(inode: *Inode, name: [*]const u8, inum: usize) c_int;
-pub extern fn dirlookup(inode: *Inode, name: [*]u8, poff: ?*u32) ?*Inode;
+pub extern fn dirlookup(inode: *Inode, name: [*]const u8, poff: ?*u32) ?*Inode;
 
 pub extern fn writei(inode: *Inode, user_src: bool, src: usize, off: usize, n: usize) c_int;
 pub extern fn readi(inode: *Inode, user_src: bool, dst: usize, off: usize, n: usize) c_int;

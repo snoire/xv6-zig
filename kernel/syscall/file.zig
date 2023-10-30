@@ -69,14 +69,14 @@ pub fn dup() isize {
 pub fn read() isize {
     var f = argfile(0);
     var p = syscall.argaddr(1);
-    var n = syscall.argint(2);
+    var n = syscall.arg(2);
     return f.read(p, n);
 }
 
 pub fn write() isize {
     var f = argfile(0);
     var p = syscall.argaddr(1);
-    var n = syscall.argint(2);
+    var n = syscall.arg(2);
     return f.write(p, n);
 }
 
@@ -105,24 +105,33 @@ pub fn link() !isize {
     c.begin_op();
     defer c.end_op();
 
-    var ip = c.namei(old).?;
-    ip.ilock();
+    var ip = c.namei(old) orelse return error.BadLink;
+    errdefer {
+        ip.ilock();
+        ip.nlink -= 1;
+        ip.update();
+        ip.unlockput();
+    }
+    {
+        ip.ilock();
+        defer ip.unlock();
 
-    if (ip.type == .dir) @panic("create the link of dir?");
-    ip.nlink += 1;
-    ip.update();
-    ip.unlock();
+        if (ip.type == .dir) return error.BadLink;
+        ip.nlink += 1;
+        ip.update();
+    }
 
     var name: [c.Dirent.DIRSIZ]u8 = undefined;
-    var dp = c.nameiparent(new, &name).?;
-    dp.ilock();
+    var dp = c.nameiparent(new, &name) orelse return error.BadLink;
+    {
+        dp.ilock();
+        defer dp.unlockput();
 
-    if (dp.dev != ip.dev) @panic("dp.dev != ip.dev");
-    if (dp.dirlink(&name, ip.inum) < 0) @panic("dirlink");
+        if (dp.dev != ip.dev or dp.dirlink(&name, ip.inum) < 0)
+            return error.BadLink;
+    }
 
-    dp.unlockput();
     ip.put();
-
     return 0;
 }
 
@@ -148,18 +157,27 @@ pub fn unlink() !isize {
     defer c.end_op();
 
     var name: [c.Dirent.DIRSIZ]u8 = undefined;
-    var dp = c.nameiparent(path, &name).?;
-    dp.ilock();
-    defer dp.unlockput();
+    var dp = c.nameiparent(path, &name) orelse return error.Unlink;
 
-    if (std.mem.eql(u8, &name, ".") or std.mem.eql(u8, &name, "..")) {
+    dp.ilock();
+    errdefer dp.unlockput();
+
+    // if name.len == DIRSIZ, it's not null-terminated string.
+    const dirname: []const u8 = n: {
+        const end = std.mem.indexOfScalar(u8, &name, 0) orelse
+            break :n name[0..name.len];
+        break :n name[0..end];
+    };
+
+    // Cannot unlink "." or "..".
+    if (std.mem.eql(u8, dirname, ".") or std.mem.eql(u8, dirname, "..")) {
         return error.Invalid;
     }
 
     var off: u32 = undefined;
     var ip = dp.dirlookup(&name, &off) orelse return error.NotFound;
     ip.ilock();
-    defer ip.unlockput();
+    errdefer ip.unlockput();
 
     if (ip.nlink < 1) {
         @panic("unlink: nlink < 1");
@@ -171,7 +189,6 @@ pub fn unlink() !isize {
 
     var de = std.mem.zeroes(c.Dirent);
     var nbytes = dp.write(false, @intFromPtr(&de), off, @sizeOf(c.Dirent));
-
     if (nbytes != @sizeOf(c.Dirent)) {
         @panic("unlink: writei");
     }
@@ -180,50 +197,61 @@ pub fn unlink() !isize {
         dp.nlink -= 1;
         dp.update();
     }
+    dp.unlockput();
 
     ip.nlink -= 1;
     ip.update();
+    ip.unlockput();
 
     return 0;
 }
 
-fn create(path: [*:0]const u8, file_type: c.Stat.Type, major: c_short, minor: c_short) ?*c.Inode {
+fn create(path: [*:0]const u8, file_type: c.Stat.Type, major: c_short, minor: c_short) !*c.Inode {
     var name: [c.Dirent.DIRSIZ]u8 = undefined;
-    var dp = c.nameiparent(path, &name).?;
+
+    var dp = c.nameiparent(path, &name) orelse return error.Create;
     dp.ilock();
+    defer dp.unlockput();
 
     var inode = dp.dirlookup(&name, null);
     if (inode) |ip| {
-        dp.unlockput();
         ip.ilock();
+        errdefer ip.unlockput();
 
         if (file_type == .file and (ip.type == .file or ip.type == .device)) {
             return ip;
         }
-        ip.unlockput();
-        return null;
+        return error.Create;
     }
 
-    var ip = c.Inode.alloc(dp.dev, file_type).?;
+    var ip = c.Inode.alloc(dp.dev, file_type) orelse return error.Create;
     ip.ilock();
+    // something went wrong. de-allocate ip.
+    errdefer {
+        ip.nlink = 0;
+        ip.update();
+        ip.unlockput();
+    }
+
     ip.major = major;
     ip.minor = minor;
     ip.nlink = 1;
     ip.update();
 
+    // Create . and .. entries.
     if (file_type == .dir) {
-        if (ip.dirlink(".", ip.inum) < 0) @panic("dirlink");
-        if (ip.dirlink("..", dp.inum) < 0) @panic("dirlink");
+        if (ip.dirlink(".", ip.inum) < 0 or ip.dirlink("..", dp.inum) < 0)
+            return error.Create;
     }
 
-    if (dp.dirlink(&name, ip.inum) < 0) @panic("dirlink");
+    if (dp.dirlink(&name, ip.inum) < 0)
+        return error.Create;
 
     if (file_type == .dir) {
-        dp.nlink += 1;
+        dp.nlink += 1; // for ".."
         dp.update();
     }
 
-    dp.unlockput();
     return ip;
 }
 
@@ -238,7 +266,7 @@ pub fn open() !isize {
 
     var ip: *c.Inode = undefined;
     if (omode & O.CREATE != 0) {
-        ip = create(path, .file, 0, 0) orelse return -1;
+        ip = try create(path, .file, 0, 0);
     } else {
         ip = c.namei(path) orelse return -1;
 
@@ -285,7 +313,7 @@ pub fn mkdir() !isize {
     var path_buf: [xv6.MAXPATH]u8 = undefined;
     var path = try argstr(0, &path_buf);
 
-    var ip = create(path, .dir, 0, 0).?;
+    var ip = try create(path, .dir, 0, 0);
     ip.unlockput();
     return 0;
 }
@@ -300,7 +328,7 @@ pub fn mknod() !isize {
     var major: c_short = @intCast(syscall.argint(1));
     var minor: c_short = @intCast(syscall.argint(2));
 
-    var ip = create(path, .device, major, minor).?;
+    var ip = try create(path, .device, major, minor);
     ip.unlockput();
     return 0;
 }
@@ -309,17 +337,18 @@ pub fn chdir() !isize {
     var p = Proc.myproc().?;
 
     c.begin_op();
+    defer c.end_op();
 
     var path_buf: [xv6.MAXPATH]u8 = undefined;
     var path = try argstr(0, &path_buf);
 
-    var ip = c.namei(path) orelse return -1;
+    var ip = c.namei(path) orelse return error.Chdir;
     ip.ilock();
+    errdefer ip.unlockput();
 
-    if (ip.type != .dir) @panic("chdir");
+    if (ip.type != .dir) return error.Chdir;
     ip.unlock();
     p.cwd.?.put();
-    c.end_op();
 
     p.cwd = ip;
     return 0;
@@ -340,7 +369,8 @@ pub fn exec() !isize {
         var uarg = fetchAddr(uargv + i * @sizeOf(usize));
         if (uarg == 0) break;
 
-        const arg = try fetchStr(uarg, try allocator.create([xv6.MAXPATH]u8));
+        var buf = try allocator.create([xv6.MAXPATH]u8);
+        const arg = try fetchStr(uarg, buf);
         try list.append(arg);
     }
 
