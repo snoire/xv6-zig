@@ -35,15 +35,15 @@ fn argstr(n: u8, buf: []u8) ![:0]const u8 {
 }
 
 /// Fetch the nth word-sized system call argument as a file descriptor
-/// and return the corresponding struct file.
-fn argfile(n: u8) *c.File {
-    var fd = syscall.argint(n);
+/// and return both the descriptor and the corresponding struct file.
+fn argfile(n: u8) !struct { u32, *c.File } {
+    var fd = try syscall.argint(n);
     var f = Proc.myproc().?.ofile[fd];
 
-    if (fd < 0 or fd >= xv6.NOFILE or f == null)
-        @panic("argfile");
+    if (fd >= xv6.NOFILE or f == null)
+        return error.argfile;
 
-    return f.?;
+    return .{ fd, f.? };
 }
 
 /// Allocate a file descriptor for the given file.
@@ -59,38 +59,37 @@ fn fdalloc(f: *c.File) u32 {
     } else @panic("fdalloc");
 }
 
-pub fn dup() isize {
-    var f = argfile(0);
+pub fn dup() !isize {
+    _, const f = try argfile(0);
     var fd = fdalloc(f);
     _ = f.dup();
     return fd;
 }
 
-pub fn read() isize {
-    var f = argfile(0);
+pub fn read() !isize {
+    _, const f = try argfile(0);
     var p = syscall.argaddr(1);
     var n = syscall.arg(2);
     return f.read(p, n);
 }
 
-pub fn write() isize {
-    var f = argfile(0);
+pub fn write() !isize {
+    _, const f = try argfile(0);
     var p = syscall.argaddr(1);
     var n = syscall.arg(2);
     return f.write(p, n);
 }
 
-pub fn close() isize {
-    var fd = syscall.argint(0);
-    var f = argfile(0); // user pointer to struct stat
+pub fn close() !isize {
+    const fd, const f = try argfile(0);
     Proc.myproc().?.ofile[fd] = null;
     f.close();
     return 0;
 }
 
-pub fn fstat() isize {
-    var f = argfile(0);
-    var st = syscall.argaddr(1);
+pub fn fstat() !isize {
+    _, const f = try argfile(0);
+    var st = syscall.argaddr(1); // user pointer to struct stat
     return f.stat(st);
 }
 
@@ -259,7 +258,7 @@ pub fn open() !isize {
     var path_buf: [xv6.MAXPATH]u8 = undefined;
     var path = try argstr(0, &path_buf);
 
-    var omode = syscall.argint(1);
+    const omode = try syscall.argint(1);
 
     c.begin_op();
     defer c.end_op();
@@ -325,8 +324,8 @@ pub fn mknod() !isize {
     var path_buf: [xv6.MAXPATH]u8 = undefined;
     var path = try argstr(0, &path_buf);
 
-    var major: c_short = @intCast(syscall.argint(1));
-    var minor: c_short = @intCast(syscall.argint(2));
+    var major: c_short = @intCast(try syscall.argint(1));
+    var minor: c_short = @intCast(try syscall.argint(2));
 
     var ip = try create(path, .device, major, minor);
     ip.unlockput();

@@ -30,8 +30,8 @@ pub fn sbrk() usize {
     return addr;
 }
 
-pub fn sleep() isize {
-    var n = syscall.argint(0);
+pub fn sleep() !isize {
+    var n = try syscall.argint(0);
     trap.tickslock.acquire();
     defer trap.tickslock.release();
 
@@ -44,8 +44,8 @@ pub fn sleep() isize {
     return 0;
 }
 
-pub fn kill() usize {
-    var pid = syscall.argint(0);
+pub fn kill() !isize {
+    var pid = try syscall.argint(0);
     return @intCast(proc.kill(pid));
 }
 

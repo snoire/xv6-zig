@@ -18,8 +18,10 @@ pub fn arg(n: u8) usize {
 }
 
 /// Fetch the nth 32-bit system call argument.
-pub fn argint(n: u8) u32 {
-    return @intCast(arg(n));
+pub fn argint(n: u8) !u32 {
+    const x = arg(n);
+    if (x > std.math.maxInt(u32)) return error.IntCast;
+    return @intCast(x);
 }
 
 /// Retrieve an argument as a pointer.
