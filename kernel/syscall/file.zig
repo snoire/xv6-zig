@@ -8,14 +8,14 @@ const Proc = proc.Proc;
 const O = xv6.O;
 
 /// Fetch the uint64 at addr from the current process.
-fn fetchAddr(addr: usize) usize {
+fn fetchAddr(addr: usize) !usize {
     const p: *Proc = Proc.myproc().?;
     if (addr >= p.sz or addr + @sizeOf(usize) > p.sz) {
-        @panic("fetchAddr");
+        return error.overflow;
     }
 
     var ip: usize = undefined;
-    _ = p.pagetable.copyin(@ptrCast(&ip), @bitCast(addr), @sizeOf(usize));
+    try p.pagetable.copyin(@ptrCast(&ip), @bitCast(addr), @sizeOf(usize));
     return ip;
 }
 
@@ -365,7 +365,7 @@ pub fn exec() !isize {
     const uargv = syscall.argaddr(1);
 
     for (0..xv6.MAXARG) |i| {
-        const uarg = fetchAddr(uargv + i * @sizeOf(usize));
+        const uarg = try fetchAddr(uargv + i * @sizeOf(usize));
         if (uarg == 0) break;
 
         var buf = try allocator.create([xv6.MAXPATH]u8);
@@ -396,12 +396,8 @@ pub fn pipe() !isize {
 
     const fdarray = syscall.argaddr(0);
     const fd_size: usize = @sizeOf(@TypeOf(fd0, fd1));
-
-    var ret = p.pagetable.copyout(@bitCast(fdarray), @ptrCast(&fd0), fd_size);
-    if (ret < 0) return error.copyout;
-
-    ret = p.pagetable.copyout(@bitCast(fdarray + fd_size), @ptrCast(&fd1), fd_size);
-    if (ret < 0) return error.copyout;
+    try p.pagetable.copyout(@bitCast(fdarray), @ptrCast(&fd0), fd_size);
+    try p.pagetable.copyout(@bitCast(fdarray + fd_size), @ptrCast(&fd1), fd_size);
 
     return 0;
 }

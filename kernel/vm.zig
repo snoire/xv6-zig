@@ -115,6 +115,8 @@ pub const PageTable = packed union {
     comptime {
         assert(@bitSizeOf(Self) == @bitSizeOf(usize));
         @export(cwalkaddr, .{ .name = "walkaddr", .linkage = .Strong });
+        @export(ccopyout, .{ .name = "copyout", .linkage = .Strong });
+        @export(ccopyin, .{ .name = "copyin", .linkage = .Strong });
     }
 
     pub fn create() !Self {
@@ -326,13 +328,13 @@ pub const PageTable = packed union {
     }
 
     /// Copy from kernel to user. Copy length bytes from source to virtual address dest
-    /// in a given page table. Return 0 on success, -1 on error.
-    pub export fn copyout(pagetable: PageTable, dest: VirAddr, source: [*]const u8, length: usize) c_int {
+    /// in a given page table.
+    pub fn copyout(pagetable: PageTable, dest: VirAddr, source: [*]const u8, length: usize) !void {
         var n: usize = 0;
         var vir_addr: usize = @bitCast(dest);
 
         while (n < length) {
-            const phy_addr = pagetable.walkaddr(@bitCast(vir_addr)) catch return -1;
+            const phy_addr = try pagetable.walkaddr(@bitCast(vir_addr));
             const ptr: [*]u8 = phy_addr.toPtr();
 
             const addr = pageRoundDown(vir_addr);
@@ -342,18 +344,21 @@ pub const PageTable = packed union {
             n += nbytes;
             vir_addr = addr + PGSIZE;
         }
+    }
 
+    fn ccopyout(pagetable: PageTable, dest: VirAddr, source: [*]const u8, length: usize) callconv(.C) c_int {
+        copyout(pagetable, dest, source, length) catch return -1;
         return 0;
     }
 
     /// Copy from user to kernel. Copy length bytes to dest from virtual address source
-    /// in a given page table. Return 0 on success, -1 on error.
-    pub export fn copyin(pagetable: PageTable, dest: [*]u8, source: VirAddr, length: usize) c_int {
+    /// in a given page table.
+    pub fn copyin(pagetable: PageTable, dest: [*]u8, source: VirAddr, length: usize) !void {
         var n: usize = 0;
         var vir_addr: usize = @bitCast(source);
 
         while (n < length) {
-            const phy_addr = pagetable.walkaddr(@bitCast(vir_addr)) catch return -1;
+            const phy_addr = try pagetable.walkaddr(@bitCast(vir_addr));
             const ptr: [*]u8 = phy_addr.toPtr();
 
             const addr = pageRoundDown(vir_addr);
@@ -363,7 +368,10 @@ pub const PageTable = packed union {
             n += nbytes;
             vir_addr = addr + PGSIZE;
         }
+    }
 
+    fn ccopyin(pagetable: PageTable, dest: [*]u8, source: VirAddr, length: usize) callconv(.C) c_int {
+        copyin(pagetable, dest, source, length) catch return -1;
         return 0;
     }
 

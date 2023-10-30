@@ -369,8 +369,8 @@ pub fn exit(status: i32) noreturn {
 }
 
 /// Wait for a child process to exit and return its pid.
-/// Return -1 if this process has no children.
-pub fn wait(addr: usize) i32 {
+/// Return error if this process has no children.
+pub fn wait(addr: usize) !isize {
     const p = Proc.myproc().?;
 
     wait_lock.acquire();
@@ -381,29 +381,25 @@ pub fn wait(addr: usize) i32 {
 
         for (&proc) |*pp| {
             if (pp.parent != p) continue;
+            havekids = true;
 
             // make sure the child isn't still in exit() or swtch().
             pp.lock.acquire();
             defer pp.lock.release();
-            havekids = true;
 
             if (pp.state != .zombie) continue;
             // Found one.
             const pid = pp.pid;
-            if (addr != 0 and p.pagetable.copyout(
-                @bitCast(addr),
-                @ptrCast(&pp.xstate),
-                @sizeOf(c_int),
-            ) < 0) {
-                @panic("wait");
+            if (addr != 0) {
+                try p.pagetable.copyout(@bitCast(addr), @ptrCast(&pp.xstate), @sizeOf(c_int));
             }
 
             pp.freeproc();
-            return @intCast(pid);
+            return pid;
         } else {
             // No point waiting if we don't have any children.
             if (!havekids or p.isKilled()) {
-                return -1;
+                return error.NoChildren;
             }
 
             // Wait for a child to exit.
@@ -566,12 +562,12 @@ pub export fn kill(pid: u32) c_int {
 export fn either_copyout(user_dst: bool, dst: usize, src: [*]const u8, len: usize) c_int {
     const p = Proc.myproc().?;
     if (user_dst) {
-        return p.pagetable.copyout(@bitCast(dst), src, len);
+        p.pagetable.copyout(@bitCast(dst), src, len) catch return -1;
     } else {
         const ptr: [*]u8 = @ptrFromInt(dst);
         std.mem.copy(u8, ptr[0..len], src[0..len]);
-        return 0;
     }
+    return 0;
 }
 
 /// Copy from either a user address, or kernel address,
@@ -580,12 +576,12 @@ export fn either_copyout(user_dst: bool, dst: usize, src: [*]const u8, len: usiz
 export fn either_copyin(dst: [*]u8, user_src: bool, src: usize, len: usize) c_int {
     const p = Proc.myproc().?;
     if (user_src) {
-        return p.pagetable.copyin(dst, @bitCast(src), len);
+        p.pagetable.copyin(dst, @bitCast(src), len) catch return -1;
     } else {
         const ptr: [*]u8 = @ptrFromInt(src);
         std.mem.copy(u8, dst[0..len], ptr[0..len]);
-        return 0;
     }
+    return 0;
 }
 
 /// Print a process listing to console.  For debugging.

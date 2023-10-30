@@ -18,7 +18,7 @@ pub fn fork() !isize {
     return try proc.fork();
 }
 
-pub fn wait() isize {
+pub fn wait() !isize {
     const p: usize = syscall.argaddr(0);
     return proc.wait(p);
 }

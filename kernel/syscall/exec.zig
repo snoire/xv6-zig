@@ -109,8 +109,7 @@ pub fn exec(path: [*:0]const u8, argv: [*:null]const ?[*:0]const u8) !isize {
         sp -= std.mem.len(arg.*.?) + 1;
         sp -= sp % 16; // riscv sp must be 16-byte aligned
         if (sp < stackbase) return error.stackbase;
-        if (pagetable.copyout(@bitCast(sp), arg.*.?, std.mem.len(arg.*.?) + 1) < 0)
-            return error.copyout;
+        try pagetable.copyout(@bitCast(sp), arg.*.?, std.mem.len(arg.*.?) + 1);
         stack.* = sp;
     }
 
@@ -121,8 +120,7 @@ pub fn exec(path: [*:0]const u8, argv: [*:null]const ?[*:0]const u8) !isize {
     sp -= sp % 16;
 
     if (sp < stackbase) return error.stackbase;
-    if (pagetable.copyout(@bitCast(sp), @ptrCast(&ustack), (args.len + 1) * @sizeOf(usize)) < 0)
-        return error.copyout;
+    try pagetable.copyout(@bitCast(sp), @ptrCast(&ustack), (args.len + 1) * @sizeOf(usize));
 
     // arguments to user main(argc, argv)
     // argc is returned via the system call return
