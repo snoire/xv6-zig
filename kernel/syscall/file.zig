@@ -48,7 +48,7 @@ fn argfile(n: u8) !struct { u32, *c.File } {
 
 /// Allocate a file descriptor for the given file.
 /// Takes over file reference from caller on success.
-fn fdalloc(f: *c.File) u32 {
+fn fdalloc(f: *c.File) !u32 {
     const p = Proc.myproc().?;
 
     return for (&p.ofile, 0..) |*ofile, i| {
@@ -56,12 +56,12 @@ fn fdalloc(f: *c.File) u32 {
             ofile.* = f;
             break @intCast(i);
         }
-    } else @panic("fdalloc");
+    } else error.fdalloc;
 }
 
 pub fn dup() !isize {
     _, const f = try argfile(0);
-    const fd = fdalloc(f);
+    const fd = try fdalloc(f);
     _ = f.dup();
     return fd;
 }
@@ -283,7 +283,7 @@ pub fn open() !isize {
     }
 
     const f = c.File.alloc() orelse return error.Failed;
-    const fd = fdalloc(f);
+    const fd = try fdalloc(f);
 
     if (ip.type == .device) {
         f.type = .device;
@@ -374,38 +374,34 @@ pub fn exec() !isize {
     }
 
     const argv = list.slice();
-    return execv(path, @ptrCast(argv)) catch -1;
+    return execv(path, @ptrCast(argv));
 }
 
-pub fn pipe() isize {
+pub fn pipe() !isize {
     var rf: *c.File = undefined;
     var wf: *c.File = undefined;
-    if (c.Pipe.alloc(&rf, &wf) < 0) @panic("pipe alloc");
 
-    const fd0 = fdalloc(rf);
-    if (fd0 < 0) @panic("fd0 < 0");
-
-    const fd1 = fdalloc(wf);
-    if (fd1 < 0) @panic("fd1 < 0");
+    if (c.Pipe.alloc(&rf, &wf) < 0) return error.pipe_alloc;
+    errdefer {
+        rf.close();
+        wf.close();
+    }
 
     const p = Proc.myproc().?;
-    const fdarray = syscall.argaddr(0);
 
+    const fd0 = try fdalloc(rf);
+    errdefer p.ofile[fd0] = null;
+    const fd1 = try fdalloc(wf);
+    errdefer p.ofile[fd1] = null;
+
+    const fdarray = syscall.argaddr(0);
     const fd_size: usize = @sizeOf(@TypeOf(fd0, fd1));
 
-    var ret = p.pagetable.copyout(
-        @bitCast(fdarray),
-        @ptrCast(&fd0),
-        fd_size,
-    );
-    if (ret < 0) @panic("copyout");
+    var ret = p.pagetable.copyout(@bitCast(fdarray), @ptrCast(&fd0), fd_size);
+    if (ret < 0) return error.copyout;
 
-    ret = p.pagetable.copyout(
-        @bitCast(fdarray + fd_size),
-        @ptrCast(&fd1),
-        fd_size,
-    );
-    if (ret < 0) @panic("copyout");
+    ret = p.pagetable.copyout(@bitCast(fdarray + fd_size), @ptrCast(&fd1), fd_size);
+    if (ret < 0) return error.copyout;
 
     return 0;
 }
