@@ -272,6 +272,7 @@ pub const PageTable = packed union {
     /// newsz need not be page-aligned. oldsz can be larger than the actual process size.
     /// Returns the new process size.
     pub fn dealloc(pagetable: PageTable, oldsz: usize, decrease: usize) usize {
+        if (oldsz <= decrease) return oldsz;
         const newsz = oldsz - decrease;
 
         const old = pageRoundUp(oldsz);
