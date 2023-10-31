@@ -131,7 +131,8 @@ pub const Proc = extern struct {
         p.state = .used;
 
         // Allocate a trapframe page.
-        p.trapframe = @alignCast(try allocator.create(c.TrapFrame));
+        const trap_frame = try allocator.create(c.TrapFrame);
+        p.trapframe = @alignCast(trap_frame);
 
         // An empty user page table.
         p.pagetable = try createPagetable(p);
@@ -150,6 +151,7 @@ pub const Proc = extern struct {
     pub fn createPagetable(p: *Proc) !PageTable {
         // An empty page table.
         const pagetable = try PageTable.create();
+        errdefer pagetable.freewalk();
 
         // map the trampoline code (for system call return)
         // at the highest user virtual address.
@@ -160,6 +162,7 @@ pub const Proc = extern struct {
             .readable = true,
             .executable = true,
         });
+        errdefer pagetable.unmap(@bitCast(TRAMPOLINE), 1, false);
 
         // map the trapframe page just below the trampoline page, for
         // trampoline.S.
@@ -182,7 +185,7 @@ pub const Proc = extern struct {
         }
 
         if (p.pagetable.ptes != null) {
-            p.pagetable.freepagetable(p.sz);
+            p.pagetable.free(p.sz);
             p.pagetable.ptes = null;
         }
         p.sz = 0;

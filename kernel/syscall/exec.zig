@@ -48,9 +48,7 @@ pub fn exec(path: [*:0]const u8, argv: [*:null]const ?[*:0]const u8) !isize {
     var p = Proc.myproc().?;
 
     const pagetable = try p.createPagetable();
-    errdefer {
-        if (sz != 0) pagetable.free(sz);
-    }
+    errdefer pagetable.free(sz);
 
     {
         c.begin_op();
@@ -140,7 +138,7 @@ pub fn exec(path: [*:0]const u8, argv: [*:null]const ?[*:0]const u8) !isize {
     p.sz = sz;
     p.trapframe.?.epc = elf.e_entry;
     p.trapframe.?.sp = sp;
-    oldpagetable.freepagetable(oldsz);
+    oldpagetable.free(oldsz);
 
     return @intCast(args.len);
 }

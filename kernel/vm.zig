@@ -209,6 +209,7 @@ pub const PageTable = packed union {
     /// Remove npages of mappings starting from vir. vir must be page-aligned. The mappings
     /// must exist. Optionally free the physical memory.
     pub fn unmap(pagetable: PageTable, vir: VirAddr, npages: usize, do_free: bool) void {
+        assert(npages >= 1);
         const start: usize = @bitCast(vir);
         const end = start + npages * PGSIZE;
         assert(mem.isAligned(start, PGSIZE));
@@ -253,12 +254,14 @@ pub const PageTable = packed union {
 
         const newsz = oldsz + increase;
         var addr = pageRoundUp(oldsz);
+
         while (addr < newsz) : (addr += PGSIZE) {
-            const page = allocator.create(Page) catch |err| {
-                _ = pagetable.dealloc(addr, addr - oldsz);
-                return err;
-            };
+            errdefer _ = pagetable.dealloc(addr, addr - oldsz);
+
+            const page = try allocator.create(Page);
+            errdefer allocator.free(page);
             @memset(page, 0);
+
             const phy_addr: usize = @intFromPtr(page);
             try pagetable.mappages(@bitCast(addr), PGSIZE, @bitCast(phy_addr), flags);
         }
@@ -282,7 +285,7 @@ pub const PageTable = packed union {
     }
 
     /// Recursively free page-table pages. All leaf mappings must already have been removed.
-    fn freewalk(pagetable: PageTable) void {
+    pub fn freewalk(pagetable: PageTable) void {
         // there are 2^9 = 512 PTEs in a page table.
         for (pagetable.ptes.?) |*pte| {
             if (!pte.flags.valid) continue;
@@ -298,8 +301,10 @@ pub const PageTable = packed union {
         pagetable.destroy();
     }
 
-    /// Free user memory pages, then free page-table pages.
+    /// Free a process's page table, and free the physical memory it refers to.
     pub fn free(pagetable: PageTable, size: usize) void {
+        pagetable.unmap(@bitCast(TRAMPOLINE), 1, false);
+        pagetable.unmap(@bitCast(TRAPFRAME), 1, false);
         if (size > 0) pagetable.unmap(@bitCast(zero), pageRoundUp(size) / PGSIZE, true);
         freewalk(pagetable);
     }
@@ -311,9 +316,11 @@ pub const PageTable = packed union {
         while (i < size) : (i += PGSIZE) {
             const pte = walk(old, @bitCast(i), false) catch unreachable;
             if (!pte.flags.valid) @panic("uvmcopy: page not present");
+            errdefer new.unmap(@bitCast(zero), i / PGSIZE, true);
 
             const source: *Page = @ptrFromInt(pte.getPhyAddr());
             const page = try allocator.create(Page);
+            errdefer allocator.free(page);
             @memcpy(page, source);
 
             const addr: usize = @intFromPtr(page);
@@ -409,13 +416,6 @@ pub const PageTable = packed union {
         } else {
             return error.InvalidString;
         }
-    }
-
-    /// Free a process's page table, and free the physical memory it refers to.
-    pub fn freepagetable(pagetable: PageTable, size: usize) void {
-        pagetable.unmap(@bitCast(TRAMPOLINE), 1, false);
-        pagetable.unmap(@bitCast(TRAPFRAME), 1, false);
-        pagetable.free(size);
     }
 };
 
