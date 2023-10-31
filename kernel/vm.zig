@@ -181,9 +181,9 @@ pub const PageTable = packed union {
     }
 
     /// Create PTEs for virtual addresses starting at vir that refer to physical addresses
-    /// starting at pa. vir and size might not be page-aligned. Returns 0 on success, or
-    /// panic if walk() couldn't allocate a needed page-table page.
-    pub fn mappages(pagetable: PageTable, vir: VirAddr, size: usize, phy: PhyAddr, perm: Pte.Flags) void {
+    /// starting at pa. vir and size might not be page-aligned. Returns error if walk()
+    /// couldn't allocate a needed page-table page.
+    pub fn mappages(pagetable: PageTable, vir: VirAddr, size: usize, phy: PhyAddr, perm: Pte.Flags) !void {
         if (size == 0) @panic("mappages: size");
         const vir_addr: usize = @bitCast(vir);
         const last = pageRoundDown(vir_addr + size - 1);
@@ -192,7 +192,7 @@ pub const PageTable = packed union {
         var pa: usize = @bitCast(phy);
 
         while (true) {
-            const pte = pagetable.walk(@bitCast(va), true) catch unreachable;
+            const pte = try pagetable.walk(@bitCast(va), true);
             if (pte.flags.valid) @panic("mappages: remap");
 
             const phy_addr: PhyAddr = @bitCast(pa);
@@ -239,7 +239,7 @@ pub const PageTable = packed union {
             .readable = true,
             .executable = true,
             .user = true,
-        });
+        }) catch unreachable;
 
         @memcpy(page[0..code.len], code);
     }
@@ -260,7 +260,7 @@ pub const PageTable = packed union {
             };
             @memset(page, 0);
             const phy_addr: usize = @intFromPtr(page);
-            pagetable.mappages(@bitCast(addr), PGSIZE, @bitCast(phy_addr), flags);
+            try pagetable.mappages(@bitCast(addr), PGSIZE, @bitCast(phy_addr), flags);
         }
         return newsz;
     }
@@ -317,7 +317,7 @@ pub const PageTable = packed union {
             @memcpy(page, source);
 
             const addr: usize = @intFromPtr(page);
-            new.mappages(@bitCast(i), PGSIZE, @bitCast(addr), pte.flags);
+            try new.mappages(@bitCast(i), PGSIZE, @bitCast(addr), pte.flags);
         }
     }
 
@@ -445,7 +445,10 @@ pub fn init() void {
 
     // map the trampoline for trap entry/exit to
     // the highest virtual address in the kernel.
-    kernel_pagetable.mappages(@bitCast(TRAMPOLINE), PGSIZE, @bitCast(trampoline_addr), .{ .readable = true, .executable = true });
+    kernel_pagetable.mappages(@bitCast(TRAMPOLINE), PGSIZE, @bitCast(trampoline_addr), .{
+        .readable = true,
+        .executable = true,
+    }) catch unreachable;
 
     // Allocate a page for each process's kernel stack.
     // Map it high in memory, followed by an invalid
@@ -461,7 +464,7 @@ pub fn init() void {
             KSTACK_NUM * PGSIZE,
             phy_addr,
             .{ .readable = true, .writable = true },
-        );
+        ) catch unreachable;
     }
 }
 
@@ -488,7 +491,7 @@ pub fn inithart() void {
 /// add a direct-mapping to the kernel page table. only used when booting.
 /// does not flush TLB or enable paging.
 pub fn kvmmap(addr: usize, size: usize, perm: Pte.Flags) void {
-    kernel_pagetable.mappages(@bitCast(addr), size, @bitCast(addr), perm);
+    kernel_pagetable.mappages(@bitCast(addr), size, @bitCast(addr), perm) catch unreachable;
 }
 
 fn pageRoundUp(addr: usize) usize {
