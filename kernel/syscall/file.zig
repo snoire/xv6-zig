@@ -368,7 +368,7 @@ pub fn exec() !isize {
         const uarg = try fetchAddr(uargv + i * @sizeOf(usize));
         if (uarg == 0) break;
 
-        var buf = try allocator.create([xv6.MAXPATH]u8);
+        const buf = try allocator.create([xv6.MAXPATH]u8);
         const arg = try fetchStr(uarg, buf);
         try list.append(arg);
     }

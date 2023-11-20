@@ -8,7 +8,7 @@ const c = @cImport({
 const std = @import("std");
 const kernel = @import("xv6.zig");
 const print = kernel.print;
-var started = std.atomic.Atomic(bool).init(false);
+var started = std.atomic.Value(bool).init(false);
 
 pub fn main() callconv(.C) void {
     const id = c.cpuid();

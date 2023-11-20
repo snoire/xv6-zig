@@ -3,7 +3,7 @@ const csr = @import("register.zig").csr;
 const kernel = @import("xv6.zig");
 const c = @import("c.zig");
 
-const Atomic = std.atomic.Atomic;
+const Atomic = std.atomic.Value;
 const Cpu = c.Cpu;
 const Proc = c.Proc;
 const Self = @This();
@@ -43,7 +43,7 @@ pub fn acquire(self: *Self) void {
     //   store(ptr, exchange, success_ordering)
     //   return null
     // ```
-    while (self.locked.tryCompareAndSwap(false, true, .Acquire, .Acquire) == true) {}
+    while (self.locked.cmpxchgWeak(false, true, .Acquire, .Acquire) == true) {}
 
     // Record info about lock acquisition for holding() and debugging.
     self.cpu = mycpu();

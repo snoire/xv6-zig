@@ -154,7 +154,7 @@ export fn kerneltrap() void {
         @panic("kerneltrap: interrupts enabled");
     }
 
-    var which_dev = devintr();
+    const which_dev = devintr();
     if (which_dev == 0) {
         print("scause {}\n", .{csr.read(.scause)});
         print("sepc=0x{x} stval=0x{x}\n", .{ sepc, csr.read(.stval) });

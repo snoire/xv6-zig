@@ -169,7 +169,7 @@ fn runcmd(ast: Ast, index: Ast.Node.Index) !void {
 
             // pipe data between child and input/output files
             {
-                var buf = try allocator.alloc(u8, PIPESIZE);
+                const buf = try allocator.alloc(u8, PIPESIZE);
                 defer allocator.free(buf);
 
                 // read from input files and write to child stdin pipe

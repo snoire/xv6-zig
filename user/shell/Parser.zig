@@ -210,7 +210,7 @@ fn parseFiles(p: *Parser) !Node.SubRange {
 
 fn parseExec(p: *Parser) !Node.Index {
     if (p.eatToken(.l_paren)) |_| return p.parseBlock();
-    var start = p.eatToken(.string) orelse
+    const start = p.eatToken(.string) orelse
         p.eatToken(.builtin_cd) orelse
         return error.ParseError;
 
