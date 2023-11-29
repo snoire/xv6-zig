@@ -164,7 +164,7 @@ pub fn unlink() !isize {
     // if name.len == DIRSIZ, it's not null-terminated string.
     const dirname: []const u8 = n: {
         const end = std.mem.indexOfScalar(u8, &name, 0) orelse
-            break :n name[0..name.len];
+            break :n name[0..];
         break :n name[0..end];
     };
 

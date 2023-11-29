@@ -257,12 +257,6 @@ pub fn main() !void {
     }
 
     for (args[2..]) |app| {
-        const shortname: [:0]const u8 = blk: {
-            const name1 = std.fs.path.basename(app);
-            const name2 = std.mem.trimLeft(u8, name1, "_");
-            break :blk @ptrCast(name2);
-        };
-
         const file = try std.fs.cwd().openFile(app, .{});
         defer file.close();
 
@@ -273,7 +267,17 @@ pub fn main() !void {
             .inum = toLittle(u16, fileino.number),
             .name = undefined,
         };
-        std.mem.copy(u8, &dir_entry.name, shortname[0 .. shortname.len + 1]);
+
+        const shortname: [:0]const u8 = n: {
+            const name1 = std.fs.path.basename(app);
+            const name2 = std.mem.trimLeft(u8, name1, "_");
+            break :n @ptrCast(name2);
+        };
+
+        // strncpy
+        const len = if (shortname.len < dir_entry.name.len) shortname.len + 1 else dir_entry.name.len;
+        @memcpy(dir_entry.name[0..len], shortname[0..len]);
+
         try disk.inodeAppend(&rootino, std.mem.asBytes(&dir_entry));
 
         var buf: [fs.BSIZE]u8 = undefined;

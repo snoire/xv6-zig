@@ -90,7 +90,7 @@ pub const Proc = extern struct {
     ofile: [xv6.NOFILE]?*c.File,
     /// Current directory
     cwd: ?*c.Inode,
-    /// Process name (debugging)
+    /// (NUL-terminated) Process name (debugging)
     name: [16]u8,
 
     const ProcState = enum(c_int) {
@@ -264,7 +264,9 @@ pub fn userinit() void {
     p.trapframe.?.epc = 0; // user program counter
     p.trapframe.?.sp = PGSIZE; // user stack pointer
 
-    std.mem.copy(u8, p.name[0..], "initcode");
+    const name = "initcode";
+    @memcpy(p.name[0 .. name.len + 1], name[0 .. name.len + 1]);
+
     p.cwd = c.namei("/");
     p.state = .runnable;
 
@@ -313,7 +315,7 @@ pub fn fork() !u32 {
 
     np.cwd = p.cwd.?.dup();
 
-    std.mem.copy(u8, np.name[0..], p.name[0..]);
+    @memcpy(&np.name, &p.name);
 
     const pid = np.pid;
 
@@ -568,7 +570,7 @@ export fn either_copyout(user_dst: bool, dst: usize, src: [*]const u8, len: usiz
         p.pagetable.copyout(@bitCast(dst), src, len) catch return -1;
     } else {
         const ptr: [*]u8 = @ptrFromInt(dst);
-        std.mem.copy(u8, ptr[0..len], src[0..len]);
+        @memcpy(ptr[0..len], src[0..len]);
     }
     return 0;
 }
@@ -582,7 +584,7 @@ export fn either_copyin(dst: [*]u8, user_src: bool, src: usize, len: usize) c_in
         p.pagetable.copyin(dst, @bitCast(src), len) catch return -1;
     } else {
         const ptr: [*]u8 = @ptrFromInt(src);
-        std.mem.copy(u8, dst[0..len], ptr[0..len]);
+        @memcpy(dst[0..len], ptr[0..len]);
     }
     return 0;
 }
