@@ -233,9 +233,8 @@ pub const PageTable = packed union {
     pub fn first(pagetable: PageTable, comptime code: []const u8) void {
         comptime assert(code.len <= PGSIZE);
         const page = allocator.create(Page) catch unreachable;
-        const addr: usize = @intFromPtr(page);
 
-        pagetable.mappages(@bitCast(zero), PGSIZE, @bitCast(addr), .{
+        pagetable.mappages(@bitCast(zero), PGSIZE, @bitCast(@intFromPtr(page)), .{
             .writable = true,
             .readable = true,
             .executable = true,
@@ -262,8 +261,7 @@ pub const PageTable = packed union {
             errdefer allocator.free(page);
             @memset(page, 0);
 
-            const phy_addr: usize = @intFromPtr(page);
-            try pagetable.mappages(@bitCast(addr), PGSIZE, @bitCast(phy_addr), flags);
+            try pagetable.mappages(@bitCast(addr), PGSIZE, @bitCast(@intFromPtr(page)), flags);
         }
         return newsz;
     }
@@ -324,8 +322,7 @@ pub const PageTable = packed union {
             errdefer allocator.free(page);
             @memcpy(page, source);
 
-            const addr: usize = @intFromPtr(page);
-            try new.mappages(@bitCast(i), PGSIZE, @bitCast(addr), pte.flags);
+            try new.mappages(@bitCast(i), PGSIZE, @bitCast(@intFromPtr(page)), pte.flags);
         }
     }
 
@@ -457,8 +454,7 @@ pub fn init() void {
     for (1..xv6.NPROC) |i| {
         const pages = allocator.create([KSTACK_NUM * PGSIZE]u8) catch unreachable;
         @memset(pages, 0);
-        const addr: usize = @intFromPtr(pages);
-        const phy_addr: PhyAddr = @bitCast(addr);
+        const phy_addr: PhyAddr = @bitCast(@intFromPtr(pages));
 
         kernel_pagetable.mappages(
             @bitCast(TRAMPOLINE - (i * (KSTACK_NUM + 1) * PGSIZE)),

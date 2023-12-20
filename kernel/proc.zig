@@ -157,8 +157,7 @@ pub const Proc = extern struct {
         // at the highest user virtual address.
         // only the supervisor uses it, on the way
         // to/from user space, so not PTE_U.
-        const trampoline_addr = @intFromPtr(&trampoline);
-        try pagetable.mappages(@bitCast(TRAMPOLINE), PGSIZE, @bitCast(trampoline_addr), .{
+        try pagetable.mappages(@bitCast(TRAMPOLINE), PGSIZE, @bitCast(@intFromPtr(&trampoline)), .{
             .readable = true,
             .executable = true,
         });
@@ -166,8 +165,7 @@ pub const Proc = extern struct {
 
         // map the trapframe page just below the trampoline page, for
         // trampoline.S.
-        const trapframe_addr = @intFromPtr(p.trapframe);
-        try pagetable.mappages(@bitCast(TRAPFRAME), PGSIZE, @bitCast(trapframe_addr), .{
+        try pagetable.mappages(@bitCast(TRAPFRAME), PGSIZE, @bitCast(@intFromPtr(p.trapframe)), .{
             .readable = true,
             .writable = true,
         });
