@@ -1,16 +1,12 @@
 const std = @import("std");
 const xv6 = @import("kernel/xv6.zig");
-const FileSource = std.build.FileSource;
-
-const target: std.zig.CrossTarget = .{
-    .cpu_arch = .riscv64,
-    .os_tag = .freestanding,
-    .abi = .none,
-};
+const LazyPath = std.Build.LazyPath;
 
 var kernel_module: *std.Build.Module = undefined;
 var optimize: std.builtin.Mode = undefined;
-var apps_step: *std.build.Step = undefined;
+var target: std.Build.ResolvedTarget = undefined;
+var usys_obj: *std.Build.Step.Compile = undefined;
+var apps_step: *std.Build.Step = undefined;
 var strip: ?bool = false;
 
 const capps = .{
@@ -79,6 +75,12 @@ const kfiles = .{
 
 pub fn build(b: *std.Build) void {
     // compilation options
+    target = b.resolveTargetQuery(.{
+        .cpu_arch = .riscv64,
+        .os_tag = .freestanding,
+        .abi = .none,
+    });
+
     optimize = b.standardOptimizeOption(.{});
     strip = b.option(bool, "strip", "Removes symbols and sections from file");
 
@@ -88,11 +90,13 @@ pub fn build(b: *std.Build) void {
         .root_source_file = null,
         .target = target,
         .optimize = optimize,
+        .strip = strip,
     });
 
     initcode_elf.addAssemblyFile(.{ .path = "user/initcode.S" });
     initcode_elf.addIncludePath(.{ .path = "kernel/" });
-    initcode_elf.setLinkerScriptPath(.{ .path = "user/initcode.ld" });
+    initcode_elf.entry = .{ .symbol_name = "start" };
+    initcode_elf.setLinkerScript(.{ .path = "user/initcode.ld" });
 
     const initcode_bin = initcode_elf.addObjCopy(.{ .format = .bin });
 
@@ -102,10 +106,13 @@ pub fn build(b: *std.Build) void {
         .root_source_file = .{ .path = "kernel/start.zig" },
         .target = target,
         .optimize = optimize,
+        .strip = strip,
+        .omit_frame_pointer = false,
     });
 
     kernel.addIncludePath(.{ .path = "kernel/" });
-    kernel.setLinkerScriptPath(.{ .path = "kernel/kernel.ld" });
+    kernel.entry = .{ .symbol_name = "_entry" };
+    kernel.setLinkerScript(.{ .path = "kernel/kernel.ld" });
 
     inline for (kfiles) |f| {
         const path = "kernel/" ++ f;
@@ -119,14 +126,11 @@ pub fn build(b: *std.Build) void {
         }
     }
 
-    kernel.addAnonymousModule("initcode", .{
-        .source_file = initcode_bin.getOutputSource(),
+    kernel.root_module.addAnonymousImport("initcode", .{
+        .root_source_file = initcode_bin.getOutput(),
     });
 
-    kernel.strip = strip;
-    kernel.code_model = .medium;
-    kernel.omit_frame_pointer = false;
-    kernel.disable_sanitize_c = true; // TODO: fix it
+    kernel.root_module.code_model = .medium;
 
     const install_kernel = b.addInstallArtifact(kernel, .{
         .dest_dir = .{ .override = .{ .custom = "./" } },
@@ -140,17 +144,17 @@ pub fn build(b: *std.Build) void {
     const mkfs = b.addExecutable(.{
         .name = "mkfs",
         .root_source_file = .{ .path = "mkfs/mkfs.zig" },
+        .target = b.standardTargetOptions(.{}),
         .optimize = optimize,
+        .strip = strip,
+        .single_threaded = true,
     });
 
     mkfs.addIncludePath(.{ .path = "./" });
     kernel_module = b.createModule(.{
-        .source_file = FileSource.relative("kernel/xv6.zig"),
+        .root_source_file = .{ .path = "kernel/xv6.zig" },
     });
-    mkfs.addModule("kernel", kernel_module);
-
-    mkfs.strip = strip;
-    mkfs.single_threaded = true;
+    mkfs.root_module.addImport("kernel", kernel_module);
 
     const mkfs_tls = b.step("mkfs", "Build mkfs");
     const install_mkfs = b.addInstallArtifact(mkfs, .{
@@ -159,9 +163,19 @@ pub fn build(b: *std.Build) void {
     mkfs_tls.dependOn(&install_mkfs.step);
 
     // build user applications
+    usys_obj = b.addObject(.{
+        .name = "usys",
+        .root_source_file = .{ .path = "user/usys.zig" },
+        .target = target,
+        .optimize = optimize,
+        .strip = strip,
+        .omit_frame_pointer = false,
+    });
+    usys_obj.root_module.addImport("kernel", kernel_module);
+
     apps_step = b.step("apps", "Compiles apps");
 
-    var all_apps: [capps.len + zapps.len]FileSource = undefined;
+    var all_apps: [capps.len + zapps.len]LazyPath = undefined;
 
     inline for (capps, 0..) |app, i| {
         all_apps[i] = buildApp(b, app, .c);
@@ -177,7 +191,7 @@ pub fn build(b: *std.Build) void {
     run_mkfs.addArg("README.md");
 
     for (all_apps) |app| {
-        run_mkfs.addFileSourceArg(app);
+        run_mkfs.addFileArg(app);
     }
 
     // fs.img will be regenerated when README are modified.
@@ -268,7 +282,7 @@ pub fn build(b: *std.Build) void {
     addr2line_tls.dependOn(&addr2line.step);
 }
 
-fn buildApp(b: *std.Build, comptime appName: []const u8, comptime lang: enum { c, zig }) FileSource {
+fn buildApp(b: *std.Build, comptime appName: []const u8, comptime lang: enum { c, zig }) LazyPath {
     const app = b.addExecutable(.{
         .name = appName,
         .root_source_file = if (lang == .zig)
@@ -277,12 +291,13 @@ fn buildApp(b: *std.Build, comptime appName: []const u8, comptime lang: enum { c
             null,
         .target = target,
         .optimize = optimize,
+        .strip = strip,
+        .omit_frame_pointer = false,
     });
-    app.addModule("kernel", kernel_module);
 
     if (lang == .c) {
         app.addIncludePath(.{ .path = "./" });
-        app.addObjectFile(.{ .path = "user/usys.zig" });
+        app.addObject(usys_obj);
         app.addCSourceFiles(.{
             .files = &.{
                 "user/" ++ appName ++ ".c",
@@ -299,17 +314,17 @@ fn buildApp(b: *std.Build, comptime appName: []const u8, comptime lang: enum { c
                 .flags = &.{},
             });
         }
+        app.root_module.addImport("kernel", kernel_module);
     }
 
-    app.strip = strip;
-    app.code_model = .medium;
-    app.omit_frame_pointer = false;
-    app.setLinkerScriptPath(.{ .path = "user/app.ld" });
+    app.root_module.code_model = .medium;
+    app.entry = .{ .symbol_name = "main" };
+    app.setLinkerScript(.{ .path = "user/app.ld" });
 
     const install_app = b.addInstallArtifact(app, .{
         .dest_dir = .{ .override = .{ .custom = "apps/" } },
     });
     apps_step.dependOn(&install_app.step);
 
-    return app.getOutputSource();
+    return app.getEmittedBin();
 }
