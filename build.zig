@@ -1,45 +1,31 @@
 const std = @import("std");
 const xv6 = @import("kernel/xv6.zig");
-const LazyPath = std.Build.LazyPath;
+const BuildApps = @import("Build/Apps.zig");
 
-var kernel_module: *std.Build.Module = undefined;
-var optimize: std.builtin.Mode = undefined;
-var target: std.Build.ResolvedTarget = undefined;
-var usys_obj: *std.Build.Step.Compile = undefined;
-var apps_step: *std.Build.Step = undefined;
-var strip: ?bool = false;
+const apps = [_]BuildApps.App{
+    .{ .name = "cat", .type = .c },
+    .{ .name = "echo", .type = .c },
+    .{ .name = "forktest", .type = .c },
+    .{ .name = "grep", .type = .c },
+    .{ .name = "init", .type = .c },
+    .{ .name = "kill", .type = .c },
+    .{ .name = "ln", .type = .c },
+    .{ .name = "ls", .type = .c },
+    .{ .name = "mkdir", .type = .c },
+    .{ .name = "rm", .type = .c },
+    .{ .name = "stressfs", .type = .c },
+    .{ .name = "usertests", .type = .c },
+    .{ .name = "grind", .type = .c },
+    .{ .name = "wc", .type = .c },
+    .{ .name = "zombie", .type = .c },
+    .{ .name = "primes", .type = .c },
+    .{ .name = "find", .type = .c },
+    .{ .name = "xargs", .type = .c },
 
-const capps = .{
-    "cat",
-    "echo",
-    "forktest",
-    "grep",
-    "init",
-    "kill",
-    "ln",
-    "ls",
-    "mkdir",
-    "rm",
-    //"sh",
-    "stressfs",
-    "usertests",
-    "grind",
-    "wc",
-    "zombie",
-    "primes",
-    "find",
-    "xargs",
+    .{ .name = "sleep", .type = .{ .link_c = false } },
+    .{ .name = "pingpong", .type = .{ .link_c = false } },
+    .{ .name = "sh", .type = .{ .link_c = true } },
 };
-
-const zapps = .{
-    "sleep",
-    "pingpong",
-    "sh",
-};
-
-const apps_linking_c = std.ComptimeStringMap(void, .{
-    .{"sh"},
-});
 
 const kfiles = .{
     "swtch.S",
@@ -75,14 +61,14 @@ const kfiles = .{
 
 pub fn build(b: *std.Build) void {
     // compilation options
-    target = b.resolveTargetQuery(.{
+    const target = b.resolveTargetQuery(.{
         .cpu_arch = .riscv64,
         .os_tag = .freestanding,
         .abi = .none,
     });
 
-    optimize = b.standardOptimizeOption(.{});
-    strip = b.option(bool, "strip", "Removes symbols and sections from file");
+    const optimize = b.standardOptimizeOption(.{});
+    const strip = b.option(bool, "strip", "Removes symbols and sections from file");
 
     // initcode
     const initcode_elf = b.addExecutable(.{
@@ -140,6 +126,20 @@ pub fn build(b: *std.Build) void {
     const kernel_tls = b.step("kernel", "Build kernel");
     kernel_tls.dependOn(&install_kernel.step);
 
+    const kernel_module = b.createModule(.{
+        .root_source_file = .{ .path = "kernel/xv6.zig" },
+    });
+
+    // build user applications
+    const apps_step = b.step("apps", "Compiles apps");
+    const build_apps = BuildApps.create(b, &apps, .{
+        .target = target,
+        .optimize = optimize,
+        .strip = strip,
+        .kernel_module = kernel_module,
+    });
+    apps_step.dependOn(&build_apps.step);
+
     // build mkfs
     const mkfs = b.addExecutable(.{
         .name = "mkfs",
@@ -151,9 +151,6 @@ pub fn build(b: *std.Build) void {
     });
 
     mkfs.addIncludePath(.{ .path = "./" });
-    kernel_module = b.createModule(.{
-        .root_source_file = .{ .path = "kernel/xv6.zig" },
-    });
     mkfs.root_module.addImport("kernel", kernel_module);
 
     const mkfs_tls = b.step("mkfs", "Build mkfs");
@@ -162,35 +159,14 @@ pub fn build(b: *std.Build) void {
     });
     mkfs_tls.dependOn(&install_mkfs.step);
 
-    // build user applications
-    usys_obj = b.addObject(.{
-        .name = "usys",
-        .root_source_file = .{ .path = "user/usys.zig" },
-        .target = target,
-        .optimize = optimize,
-        .strip = strip,
-        .omit_frame_pointer = false,
-    });
-    usys_obj.root_module.addImport("kernel", kernel_module);
-
-    apps_step = b.step("apps", "Compiles apps");
-
-    var all_apps: [capps.len + zapps.len]LazyPath = undefined;
-
-    inline for (capps, 0..) |app, i| {
-        all_apps[i] = buildApp(b, app, .c);
-    }
-    inline for (zapps, capps.len..) |app, i| {
-        all_apps[i] = buildApp(b, app, .zig);
-    }
-
     // build fs.img
     // run mkfs to build the initial file system
     const run_mkfs = b.addRunArtifact(mkfs);
     const fs_img = run_mkfs.addOutputFileArg("fs.img");
     run_mkfs.addArg("README.md");
 
-    for (all_apps) |app| {
+    const output_apps = build_apps.getOutput();
+    for (output_apps) |app| {
         run_mkfs.addFileArg(app);
     }
 
@@ -280,51 +256,4 @@ pub fn build(b: *std.Build) void {
 
     addr2line.step.dependOn(&install_kernel.step);
     addr2line_tls.dependOn(&addr2line.step);
-}
-
-fn buildApp(b: *std.Build, comptime appName: []const u8, comptime lang: enum { c, zig }) LazyPath {
-    const app = b.addExecutable(.{
-        .name = appName,
-        .root_source_file = if (lang == .zig)
-            .{ .path = "user/" ++ appName ++ ".zig" }
-        else
-            null,
-        .target = target,
-        .optimize = optimize,
-        .strip = strip,
-        .omit_frame_pointer = false,
-    });
-
-    if (lang == .c) {
-        app.addIncludePath(.{ .path = "./" });
-        app.addObject(usys_obj);
-        app.addCSourceFiles(.{
-            .files = &.{
-                "user/" ++ appName ++ ".c",
-                "user/ulib.c",
-                "user/printf.c",
-                "user/umalloc.c",
-            },
-        });
-    } else {
-        if (apps_linking_c.has(appName)) {
-            app.addIncludePath(.{ .path = "./" });
-            app.addCSourceFile(.{
-                .file = .{ .path = "user/umalloc.c" },
-                .flags = &.{},
-            });
-        }
-        app.root_module.addImport("kernel", kernel_module);
-    }
-
-    app.root_module.code_model = .medium;
-    app.entry = .{ .symbol_name = "main" };
-    app.setLinkerScript(.{ .path = "user/app.ld" });
-
-    const install_app = b.addInstallArtifact(app, .{
-        .dest_dir = .{ .override = .{ .custom = "apps/" } },
-    });
-    apps_step.dependOn(&install_app.step);
-
-    return app.getEmittedBin();
 }
