@@ -27,7 +27,6 @@ For example, `zig build -Doptimize=ReleaseFast -Dstrip run -Dcpus=1` enables fas
 Other useful commands include:
 
 - `zig build kernel` - compiles only the kernel
-- `zig build mkfs` - compiles only the mkfs command
 - `zig build apps` - compiles all user programs
 - `zig build fs` - compiles the filesystem image fs.img
 - `zig build qemu` - runs qemu with gdb server for debugging. Run

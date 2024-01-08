@@ -1,6 +1,7 @@
 const std = @import("std");
 const xv6 = @import("kernel/xv6.zig");
 const BuildApps = @import("Build/Apps.zig");
+const BuildFs = @import("Build/Fs.zig");
 
 const apps = [_]BuildApps.App{
     .{ .name = "cat", .type = .c },
@@ -140,41 +141,9 @@ pub fn build(b: *std.Build) void {
     });
     apps_step.dependOn(&build_apps.step);
 
-    // build mkfs
-    const mkfs = b.addExecutable(.{
-        .name = "mkfs",
-        .root_source_file = .{ .path = "mkfs/mkfs.zig" },
-        .target = b.standardTargetOptions(.{}),
-        .optimize = optimize,
-        .strip = strip,
-        .single_threaded = true,
-    });
-
-    mkfs.addIncludePath(.{ .path = "./" });
-    mkfs.root_module.addImport("kernel", kernel_module);
-
-    const mkfs_tls = b.step("mkfs", "Build mkfs");
-    const install_mkfs = b.addInstallArtifact(mkfs, .{
-        .dest_dir = .{ .override = .{ .custom = "./" } },
-    });
-    mkfs_tls.dependOn(&install_mkfs.step);
-
     // build fs.img
-    // run mkfs to build the initial file system
-    const run_mkfs = b.addRunArtifact(mkfs);
-    const fs_img = run_mkfs.addOutputFileArg("fs.img");
-    run_mkfs.addArg("README.md");
-
-    const output_apps = build_apps.getOutput();
-    for (output_apps) |app| {
-        run_mkfs.addFileArg(app);
-    }
-
-    // fs.img will be regenerated when README are modified.
-    run_mkfs.extra_file_dependencies = &.{"README.md"};
-    _ = run_mkfs.captureStdErr();
-
-    const install_fs_img = b.addInstallFile(fs_img, "fs.img");
+    const build_fs = BuildFs.create(b, "fs.img", build_apps.getOutput(), &.{"README.md"});
+    const install_fs_img = b.addInstallFile(build_fs.getOutput(), "fs.img");
     b.getInstallStep().dependOn(&install_fs_img.step);
 
     const fs_tls = b.step("fs", "Build fs.img");

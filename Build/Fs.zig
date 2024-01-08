@@ -1,8 +1,144 @@
 const std = @import("std");
-const kernel = @import("kernel");
+const Build = std.Build;
+const String = []const u8;
+const Self = @This();
+
+step: Build.Step,
+name: String,
+apps: []const Build.LazyPath,
+extra_files: []const String = &.{},
+output_file: Build.GeneratedFile,
+
+pub fn create(owner: *Build, name: String, apps: []const Build.LazyPath, extra_files: []const String) *Self {
+    const self = owner.allocator.create(Self) catch @panic("OOM");
+    self.* = .{
+        .step = Build.Step.init(.{
+            .id = .custom,
+            .name = "Build User Applications",
+            .owner = owner,
+            .makeFn = make,
+        }),
+        .name = name,
+        .apps = apps,
+        .extra_files = extra_files,
+        .output_file = .{ .step = &self.step },
+    };
+
+    for (apps) |app| {
+        app.addStepDependencies(&self.step);
+    }
+
+    return self;
+}
+
+pub fn getOutput(self: *Self) Build.LazyPath {
+    return .{ .generated = &self.output_file };
+}
+
+fn make(step: *Build.Step, _: *std.Progress.Node) !void {
+    const b = step.owner;
+    const self = @fieldParentPtr(Self, "step", step);
+
+    var file_list = std.ArrayList(String).init(b.allocator);
+    defer file_list.deinit();
+
+    for (self.apps) |app| {
+        const file_path = app.getPath(b);
+        try file_list.append(file_path);
+    }
+
+    for (self.extra_files) |file_path| {
+        try file_list.append(b.pathFromRoot(file_path));
+    }
+
+    var man = b.cache.obtain();
+    defer man.deinit();
+
+    // Random bytes to make this Step unique. Refresh this with
+    // new random bytes when this implementation is modified in
+    // a non-backwards-compatible way.
+    man.hash.add(@as(u32, 0x910d522a));
+
+    for (file_list.items) |file_path| {
+        _ = try man.addFile(file_path, null);
+    }
+
+    // Cache hit, skip subprocess execution.
+    if (try step.cacheHit(&man)) {
+        const digest = man.final();
+        self.output_file.path = try b.cache_root.join(b.allocator, &.{ "o", &digest, self.name });
+        return;
+    }
+
+    const digest = man.final();
+    const cache_path = "o" ++ std.fs.path.sep_str ++ digest;
+
+    var cache_dir = try b.cache_root.handle.makeOpenPath(cache_path, .{});
+    defer cache_dir.close();
+
+    try mkfs(cache_dir, self.name, file_list.items);
+
+    self.output_file.path = try b.cache_root.join(b.allocator, &.{ cache_path, self.name });
+    try step.writeManifest(&man);
+}
+
+fn mkfs(cache_dir: std.fs.Dir, fs_name: String, files: []const String) !void {
+    comptime assert(fs.BSIZE % @sizeOf(Dinode) == 0);
+    comptime assert(fs.BSIZE % @sizeOf(Dirent) == 0);
+
+    var disk = try Disk.init(cache_dir, fs_name);
+    defer disk.deinit();
+
+    // write superblock
+    _ = try disk.writeSector(1, 0, std.mem.asBytes(&superblk));
+
+    // allocate root inode
+    var rootino = disk.allocInode(.dir);
+    defer disk.writeInode(rootino);
+
+    assert(rootino.number == fs.ROOTINO);
+
+    inline for (.{ ".", ".." }) |name| {
+        try disk.inodeAppend(&rootino, std.mem.asBytes(&Dirent{
+            .inum = toLittle(u16, rootino.number),
+            .name = name.* ++ [_]u8{0} ** (Dirent.DIRSIZ - name.len), // .name = name[0..c.DIRSIZ],
+        }));
+    }
+
+    for (files) |f| {
+        const file = try std.fs.cwd().openFile(f, .{});
+        defer file.close();
+
+        var fileino = disk.allocInode(.file);
+        defer disk.writeInode(fileino);
+
+        var dir_entry = Dirent{
+            .inum = toLittle(u16, fileino.number),
+            .name = undefined,
+        };
+
+        // strncpy
+        const shortname = std.fs.path.basename(f);
+        const len = @min(shortname.len, dir_entry.name.len);
+        @memcpy(dir_entry.name[0..len], shortname[0..len]);
+        if (len < dir_entry.name.len) {
+            dir_entry.name[len] = 0;
+        }
+
+        try disk.inodeAppend(&rootino, std.mem.asBytes(&dir_entry));
+
+        var buf: [fs.BSIZE]u8 = undefined;
+        while (true) {
+            const amt = try file.read(&buf);
+            if (amt == 0) break;
+            try disk.inodeAppend(&fileino, buf[0..amt]);
+        }
+    }
+}
+
+const kernel = @import("../kernel/xv6.zig");
 const c = kernel.c;
 const fs = kernel.fs;
-const log = std.log.scoped(.mkfs);
 const assert = std.debug.assert;
 const toLittle = std.mem.nativeToLittle; // convert to riscv byte order
 
@@ -40,8 +176,8 @@ const Disk = struct {
     /// the first free block that we can allocate
     freeblock: u32 = nmeta,
 
-    fn init(path: []const u8) !Disk {
-        const f = try std.fs.cwd().createFile(path, .{ .read = true });
+    fn init(dir: std.fs.Dir, path: String) !Disk {
+        const f = try dir.createFile(path, .{ .read = true });
 
         // allocate a sparse file
         try f.seekTo(kernel.FSSIZE * fs.BSIZE - 1);
@@ -56,7 +192,7 @@ const Disk = struct {
     }
 
     /// buf must be little endian data
-    fn writeSector(self: Disk, sector_number: usize, offset: usize, buf: []const u8) !usize {
+    fn writeSector(self: Disk, sector_number: usize, offset: usize, buf: String) !usize {
         if (sector_number >= kernel.FSSIZE) return error.TOO_LARGE;
         try self.file.seekTo(sector_number * fs.BSIZE + offset);
 
@@ -184,7 +320,7 @@ const Disk = struct {
     }
 
     /// buf must be little endian data
-    fn inodeAppend(self: *Disk, inode: *Inode, buf: []const u8) !void {
+    fn inodeAppend(self: *Disk, inode: *Inode, buf: String) !void {
         var n: usize = 0;
         var filesize = inode.size;
 
@@ -205,7 +341,6 @@ const Disk = struct {
 
     /// write to bitmap
     fn writeBitmap(self: Disk) !void {
-        log.info("balloc: first {} blocks have been allocated", .{self.freeblock});
         assert(self.freeblock < fs.BSIZE * 8);
 
         var buf: [fs.BSIZE]u8 = .{0} ** fs.BSIZE;
@@ -214,77 +349,6 @@ const Disk = struct {
             buf[i / 8] |= @as(u8, 0x1) << @intCast(i % 8);
         }
 
-        log.info("balloc: write bitmap block at sector {}", .{superblk.bmapstart});
         _ = try self.writeSector(superblk.bmapstart, 0, &buf);
     }
 };
-
-pub fn main() !void {
-    comptime assert(fs.BSIZE % @sizeOf(Dinode) == 0);
-    comptime assert(fs.BSIZE % @sizeOf(Dirent) == 0);
-
-    const allocator = std.heap.page_allocator;
-    var args = try std.process.argsAlloc(allocator);
-    defer allocator.free(args);
-
-    if (args.len < 2) {
-        log.err("Usage: {s} fs.img files...", .{args[0]});
-        return;
-    }
-
-    log.info(
-        "nmeta {} (boot, super, log blocks {} inode blocks {}, bitmap blocks {}) blocks {} total {}",
-        .{ nmeta, nlog, ninodeblocks, nbitmap, nblocks, kernel.FSSIZE },
-    );
-
-    var disk = try Disk.init(args[1]);
-    defer disk.deinit();
-
-    // write superblock
-    _ = try disk.writeSector(1, 0, std.mem.asBytes(&superblk));
-
-    // allocate root inode
-    var rootino = disk.allocInode(.dir);
-    defer disk.writeInode(rootino);
-
-    assert(rootino.number == fs.ROOTINO);
-
-    inline for (.{ ".", ".." }) |name| {
-        try disk.inodeAppend(&rootino, std.mem.asBytes(&Dirent{
-            .inum = toLittle(u16, rootino.number),
-            .name = name.* ++ [_]u8{0} ** (Dirent.DIRSIZ - name.len), // .name = name[0..c.DIRSIZ],
-        }));
-    }
-
-    for (args[2..]) |app| {
-        const file = try std.fs.cwd().openFile(app, .{});
-        defer file.close();
-
-        var fileino = disk.allocInode(.file);
-        defer disk.writeInode(fileino);
-
-        var dir_entry = Dirent{
-            .inum = toLittle(u16, fileino.number),
-            .name = undefined,
-        };
-
-        const shortname: [:0]const u8 = n: {
-            const name1 = std.fs.path.basename(app);
-            const name2 = std.mem.trimLeft(u8, name1, "_");
-            break :n @ptrCast(name2);
-        };
-
-        // strncpy
-        const len = if (shortname.len < dir_entry.name.len) shortname.len + 1 else dir_entry.name.len;
-        @memcpy(dir_entry.name[0..len], shortname[0..len]);
-
-        try disk.inodeAppend(&rootino, std.mem.asBytes(&dir_entry));
-
-        var buf: [fs.BSIZE]u8 = undefined;
-        while (true) {
-            const amt = try file.read(&buf);
-            if (amt == 0) break;
-            try disk.inodeAppend(&fileino, buf[0..amt]);
-        }
-    }
-}
